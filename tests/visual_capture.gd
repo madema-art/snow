@@ -19,7 +19,7 @@ const SHOTS := {
 	"final": [-40.0, 6950.0, 0.0, 0.0, 38.0],
 	"finish": [0.0, 7480.0, 0.0, 0.0, 20.0],
 	"tree_close": [-150.0, 3520.0, 0.0, 0.0, 0.1],
-	"rider_close": [0.0, 30.0, 0.0, -1.35, 0.1],
+	"rider_close": [0.0, 30.0, 0.0, 1.45, 0.12],
 	"rider_carve": [-120.0, 900.0, 0.0, -0.9, 0.12],
 	"nitro": [-80.0, 6700.0, 0.0, -0.5, 0.05],
 	"pause": [0.0, 30.0, 0.0, 0.0, 0.0],
@@ -73,7 +73,7 @@ func ride(name: String) -> void:
 	if name == "ride_nitro":
 		rider.nitro = 1.0 # VISUAL FIXTURE ONLY: never done in navigation proofs.
 		Input.action_press("boost")
-	for i in 40:
+	for i in (22 if name == "ride_carve" else 40):
 		var carve := 0.85 if name == "ride_carve" else 0.0
 		Input.action_press("steer_right", carve)
 		Input.action_release("steer_left")
@@ -87,7 +87,7 @@ func ride(name: String) -> void:
 	run.restart()
 
 func shot(name: String, s: Array) -> void:
-	if name.begins_with("ride"):
+	if name.begins_with("ride_"):
 		await ride(name)
 		return
 	var x: float = s[0]

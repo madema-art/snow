@@ -1,56 +1,72 @@
-# Architecture — development pass 2
+# Architecture — pass 3
 
-Project root `D:\Snow`, Godot 4.7.2, main scene `scenes/main.tscn`. No external dependencies or second project. Terrain and native assets are built once by small GDScripts.
+Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/main.tscn` (one Node3D with `scripts/main.gd`). No external dependencies, plugins or downloaded assets. Everything is built at startup by small scripts (measured ~1.5–4 s generation, see BUILD_STATUS).
+
+## Files
 
 | File | Responsibility |
 |---|---|
-| scripts/main.gd | Compose controls, run, mountain, rider, camera, audio, pause; wire restart to camera reset |
-| scripts/mountain.gd | Massif course v2, analytical height/normal/region functions, indexed render/collision chunks, per-chunk seeded tree/rock batches, matching colliders, finish, fog and silhouettes |
-| scripts/snow.gdshader | World-space snow grain/mottling/ridges without downloaded textures |
-| scripts/rider.gd | Swept CharacterBody motion, gravity, edge grip, brake/tuck/ollie, independent aerial tricks, landed rewards/nitro, impacts/apex/drop rules, local safe recovery and restart |
-| scripts/rider_visual.gd | Procedural rider/board, normal conformance, lean/crouch/grab/get-up poses and charge-only board emission/light |
-| scripts/chase_camera.gd | Independent absolute-yaw 360 orbit, pitch, analog response, idle/recenter state, speed lookahead/FOV/distance and sphere sweeps before/after smoothing |
-| scripts/controls.gd | Xbox/default developer actions, permanent LS steering, explicit fixed UI events, validated conflict swaps and v1→v2 remap migration |
-| scripts/run_state.gd | Ready/running/finished/ended, push-off clock, paused guard, course-specific top ten persistence and hundredth formatting |
-| scripts/pause_menu.gd | Always-processing hidden CanvasLayer; pause/results, fixed focus navigation, saved remap capture and resume/restart/quit |
-| scripts/snow_audio.gd | Original seeded PCM buffers, wind/snow/edge/boost loops, pooled event voices, regional filtered/gusted wind, SFX/MountainWind/Music buses, rumble |
+| scripts/main.gd | Composition root: controls, run, mountain, rider, camera, FX, audio, haptics, pause menu |
+| scripts/snow_tuning.gd | **All feel constants**: gravity/drag, carve, brake/tuck, surfaces, ollie/air, landing, trick rewards and fatigue, nitro, crash thresholds/recovery, camera |
+| scripts/mountain.gd | `SnowMountain`: analytic course (`height_at`, `normal_at`, `surface_at`, `region`), indexed 200 m render+collision chunks with per-vertex surface/lip/AO data, seeded trees/boulders/outcrops in per-chunk MultiMeshes + per-chunk static bodies, hazard buckets + `hazards_near()`, finish area |
+| scripts/scenery_meshes.gd | `SnowMeshes`: tiered snow-loaded conifers (+ far LOD), faceted boulders whose vertices are also their convex colliders |
+| scripts/atmosphere.gd | `SnowAtmosphere`: sky shader, sky ambient, ACES exposure, fog/aerial perspective, glow, sun with 4-split shadows |
+| scripts/backdrop.gd | `SnowBackdrop`: surrounding ranges/valleys (ridged noise, 150x200 m cells) with coarse collision below the course edge |
+| scripts/rider.gd | `SnowRider`: CharacterBody physics, carving, surfaces, ollie/coyote, air tricks, landing evaluation, trick rewards/fatigue, nitro, hazards/impacts, crash + visual tumble, get-up, finish coast; emits `sound_event(kind, strength)` |
+| scripts/rider_visual.gd | `SnowRiderVisual`: procedural board (sidecut, camber, kick, thickness, glow top sheet), bindings, boots, layered clothing, helmet/goggles; per-frame two-bone IK legs/arms; carve inclination, crouch spring, tuck, preload/pop, grabs, spin/flip poses, flail/lie/get-up; board glow |
+| scripts/chase_camera.gd | `SnowCamera`: travel-relative free look, analog rate smoothing, idle settle/recenter, speed framing/FOV, drop anticipation, sprung anchor, landing nod, asymmetric sphere collision |
+| scripts/snow_fx.gd | `SnowFX`: edge spray, landing/crash/tumble bursts, nitro embers, bough snow, persistent board tracks (ribbon segments) |
+| scripts/snow_audio.gd | `SnowAudio`: bus graph, 10 surface/wind/nitro loops mixed from rider state, 12-voice one-shot pool with stealing, 4 positional voices (tree pass-bys, boughs), environment (exposure, forest shelter, cliff reverb) |
+| scripts/haptics.gd | `SnowHaptics`: continuous snow rumble + event pulses (landing, crash tiers, nitro, empty sputter) on the first connected pad |
+| scripts/controls.gd | `SnowControls`: default bindings, fixed LS steering and UI events, validated remaps with conflict swap, persistence, v1 migration, readable names |
+| scripts/run_state.gd | `SnowRun`: ready/running/finished/ended, clock, top-ten persistence, last rank |
+| scripts/pause_menu.gd | `SnowPauseMenu`: the only UI; pause/results, remapping, delayed results after finish/fatal, auto-pause on disconnect/focus loss |
+| shaders/*.gdshader | terrain, tree, rock, backdrop, sky, board track, pause frost; `noise.gdshaderinc` shared noise |
+| audio/*.wav | Original synthesized sounds generated by `tools/synth_audio.py` |
+| tests/*.gd | See QA.md |
 
-## Mountain
+## Coordinates and course
 
-See MOUNTAIN.md for exact geography/routes. Run length 9.36 km, width 1.2 km, net summit-to-finish drop ~3.115 km. Spawn Z=8, finish Z=9180 with |X|<50 on grounded non-recovering contact. Render/collision backing extends Z=-200..9600, X=-600..600, at 8 m spacing in 49 indexed 200 m chunks (~367,500 triangles). Every rendered terrain triangle has collision. Five naturally blended regions; several real transverse cuts, buttress/chute, forest corridors, broken ridges and optional ramps. No checkpoint enforcement and no coordinate death zones. Fixed seeds: scenery 74021 + chunkStart*13, backdrop 840, audio 3129. Trees and rocks are batched locally for culling; all hazards retain real native colliders.
++Z downhill, +Y up, X across (-600..600). With the default camera looking downhill, screen-right is world -X, so positive steer reduces heading. Logical distance = world Z / `DISTANCE_SCALE` (1.2) for feature definitions. Spawn Z=8, finish Z=9180 (|X|<50, grounded, not recovering). Terrain backing Z=-200..9600 in 48 chunks of 150x25 cells (8 m), ~360k triangles; render triangles == collision triangles. See MOUNTAIN.md.
 
-## Physics and collision
+Per-vertex COLOR on terrain: r = powder, g = ice (both from `surface_from`, the same function physics uses), b = rock/lip scour (slope + drop-ahead/side-drop detection), a = AO (pooled around trunks/boulders and in concavities).
 
-+Z downhill, +Y up; initial camera screen-right is world -X, so positive steering reduces heading. Gravity 20 m/s², ollie 8.8 m/s, edge grip 5.2, turn rate 1.28, quadratic drag 0.0075, boost 24 m/s², nitro burn 0.25/s remain unchanged. No speed limiter was introduced. Physics is fixed 60 Hz; acceleration uses delta and damping uses exponential rates. Floor tangent Y is reconstructed because CharacterBody clears floor vertical velocity; normal gravity projection accelerates downhill. Edge damping changes sideways motion while retaining forward inertia. Brake dissipates energy; tuck reduces quadratic drag.
+## Physics (60 Hz)
 
-The 1.3 m capsule (r=0.28) uses move_and_slide sweeps, actual floor normals, 57° floor threshold and 0.85 m floor snap. Matching trunk cylinders and baked faceted rock convex hulls replace oversized capsules. Canopies are non-solid. Incidental normal contacts <5 m/s may brush past; stronger ones crash. Fatal normal impacts: tree >30 m/s, rock >34 m/s; terrain faces steeper than a floor can crash above 16 m/s normal impact and are fatal above 34. No X/Z boundary kills. Apex tracking detects real >55 m sustained airborne drops (and downward velocity), or >35 m drops on landing. Bad trick alignment/normal landing impact >24 m/s and extreme edge sliding remain recoverable crash triggers.
+CharacterBody3D capsule r=0.28 h=1.3, `move_and_slide`, floor max 57°, snap 0.85 m (suspended for 0.2 s after a pop so ollies at speed leave steep snow). Ground step:
 
-Air tricks use ONLY remappable bumpers for yaw and D-pad up/down for flips; RS has no rider/trick references. Clean 180/switch/full yaw landing tolerance 0.85 rad, pitch tolerance 0.7 rad. Clean jumps plus completed rotations/grabs earn charge only at landing; reversing net rotation cannot farm completed tricks. Variable boost bursts use stored charge and do not alter edge grip. Board color/emission is the only charge display.
+1. Steering input shaped (`|x|^1.3`) and smoothed with faster release than engage → `steer` (edge engagement).
+2. Max yaw rate = min(PIVOT_RATE, CARVE_ACCEL / speed) x (1 + brake x SKID_TURN_BONUS): easy pivots at low speed, carve-limited at high speed.
+3. CharacterBody clears vertical floor velocity, so the tangent velocity is reconstructed, then gravity is projected onto the slope.
+4. Lateral damping (edge grip) scaled by edge engagement, ice (-32%) and braking (deliberate skid). Forward inertia untouched.
+5. Resistance: rolling (+powder, -ice), quadratic drag (tuck -58%, powder +12%), brake, carve scrub. **No speed cap.**
+6. Edge catch: lateral slide >17 m/s above 21 m/s without braking → fall.
+7. Ollie on release; preload up to +30% pop; coyote 0.14 s.
 
-ALL falls immediately set nitro, velocity, speed and boosting to zero and update board emission. Recovery length clamp(1.2+severity*0.12,1.2,7) s counts toward run time; world travel stops. Local recovery probes reject hazard overlap, steep candidate snow or vertical changes >5 m; they return to safe nearby snow, not past a gorge. Fatal attempts never enter records. Pose animation is a prototype, not ragdoll. last_crash_reason is debug/test metadata only, never HUD.
+Air: gravity, air-only drag (0.35 x riding drag), LS pre-aims the board (does not move the rider), spin/flip rates ramp up/down (LB/RB, D-pad), grab accumulates. Confirmed air after 0.09 s filters terrain micro-hops.
 
-## Camera and controls
+Contacts: snow-only contacts restore pre-contact tangent momentum to remove seam losses (pass 2). Hazard contacts: normal impact <5 m/s brushes (and at walking pace the rider shuffles around the trunk instead of being pinned); harder impacts fall; >30 m/s trees / >34 m/s rocks are fatal; steep terrain walls >16 m/s fall, >34 fatal. Apex-to-landing drop >35 m or sustained free fall >55 m is fatal.
 
-Camera stores absolute yaw, independent of heading. Input.get_vector applies radial deadzone 0.18; magnitude^1.35 gives precision near center and fast large-input response. Horizontal rate 2.65 rad/s has no limit or snap; pitch rate 1.8 rad/s clamps orbit elevation to -0.35..1.25 rad. Yaw affects only the camera. Manual input resets a 3 s inactivity grace period and cancels recenter. After grace, gentle shortest-angle settling follows heading. Explicit recenter (default RS click) uses faster smooth settling, never a hard transform reset. Only restarting hard-resets the camera. Speed increases follow distance and FOV and adds forward lookahead. A cached 0.45 m sphere query checks the desired and smoothed camera positions against real terrain/hazards; near plane is 0.12 m, far clip 6500 m.
+Landing: yaw error (180s allowed, ride switch), pitch error, board-vs-travel alignment and impact; quality 0..1. Reward = (air + drop + spins + flips + grab) x combo x quality / (1 + trick fatigue + global fatigue x 0.45), capped at 0.85. Fatigue decays 1/25 s per trick, 1/7 s global.
 
-Defaults: fixed LS steer, fixed Menu pause; A push/ollie, B boost, LT brake, RT tuck, X grab, LB/RB yaw, D-pad up/down flips, RS camera, RS click recenter, View restart. All non-reserved actions remap via conflict swaps. Keyboard: README. Fixed UI D-pad/LS/A/B does not inherit gameplay mapping. Expanded mappings fit the same minimal pause layout, with explicit focus neighbors.
+Crash: `crash()` zeros nitro, velocity, speed, boost and trick state FIRST, then starts a tumble whose motion lives only in `tumble_pos/basis` (presentation). The body never moves during recovery. At get-up (last 0.9 s) the body is placed at the tumble rest point if it is standable, within 9 m, below no lip and reachable by an unobstructed ray; otherwise at the conservative recovery point. Fatal tumbles keep falling for presentation; the run is already over.
 
-## Run and saves
+## Camera
 
-Only explicit push-off starts elapsed simulation time. Recovery counts; scene load and camera movement do not. Tree pause freezes world, camera, sound and time, even in midair. Finish saves once and opens the same pause/results interface with Resume disabled. Hundredths are rounded for display; underlying clock resolution is 1/60 s, times serialized to milliseconds.
+`orbit = follow_yaw + look_yaw`. `follow_yaw` tracks the horizontal velocity direction (heading when slow/recovering) at 2.2–3.4/s on snow, 1.1/s in air (spins/flips never affect it), frozen during tumbles, 1.4/s on get-up, unconditionally behind the board at the summit. `look_yaw`/`lift` integrate a smoothed analog rate (deadzone 0.18, response ^1.35, 2.9/1.9 rad/s). Settling after 3 s idle (ramped, 1.4/s), recenter 5/s, none at the summit. Distance 5.8→8.6 m with speed (+0.7 boost, +2.5 crashed), FOV 62→73 (+4 boost). Anchor: horizontally locked, vertically sprung. Look target: ahead along the view by 3+0.42 x speed, lowered toward the ground ahead at speed. Drop anticipation samples the analytic terrain 30/55/85 m ahead and raises pitch up to +0.32 rad. Collision: 0.35 m sphere cast anchor→desired against terrain+hazards; retract instantly, re-extend at 3.5 m/s; analytic ground clearance. Landing/crash nods are damped springs; a tiny speed vibration only above ~86 km/h.
 
-New official-course records: user://snow_records_massif_v2.json; original user://snow_records_v1.json is retained unchanged and is not mixed with new course records. Expanded controls: user://snow_controls_v2.json; valid old v1 mappings migrate, retaining old actions and finding conflict-free free buttons for new actions. Malformed/corrupt files fall back/filter safely. Paths resolve under %APPDATA%\Godot\app_userdata\SNOW on Windows. Automated fixtures use test_* files and clean them up. There is no anti-cheat or cross-hardware bit-identical replay proof.
+## Rendering
 
-## Performance and remaining limits
+Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with sun scatter and aerial perspective, sky shader (gradient, haze, sun disk/glow, cirrus) also providing ambient. Sun: 4 PSSM splits to 260 m. Trees: 4 variants x near (≤420 m, shadows) + far LOD (420–2600 m, no shadows) MultiMeshes per chunk; rocks/outcrops 4 variants ≤1600 m. Compatibility multiplies vertex COLOR by the MultiMesh instance colour, so MultiMeshes set white instance colours. Board tracks: alpha ribbons, distance-faded, last ~70 segments kept. Particles: CPUParticles3D (no emission-ratio support), density expressed through opacity/size.
 
-Indexed terrain computes each vertex once; bounded generation happens at startup, not during descent. Local MultiMeshes and 1250 m visibility range prevent drawing the entire forest. Final generated count: 4117 trees, 960 rocks, 48 distant silhouettes. Compatibility rendering, 2x MSAA, one 145 m shadowed sun, no expensive GI/storms, non-shadow board lamp. Audio uses original precomputed buffers and six event players. Camera queries are reused; collision recovery queries allocate only on crash.
+## Audio
 
-The test benchmark creates an explicit 3840x2160 SubViewport and samples native GPU timer values with VSync/cap disabled only inside the benchmark. A small visible root window also renders, so total call counts include two views. These are short stationary regional probes, not sustained moving gameplay certification. See BUILD_STATUS.md for numbers.
+See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue compressor) ← Board, MountainWind (low-pass for forest shelter), Impacts (reverb tuned by region/enclosure) ← Nitro. Music → Master, intentionally empty.
 
-Procedural low-poly art/poses and synthesized audio remain placeholders. No tracks, spray, deformation, skeletal animation or ragdoll. Coarse 8 m cliff lips and optional shortcuts need manual fairness checks. Physical Xbox feel/reconnects/haptics, sustained 4K frame-time tails, audio listening and all alternate routes still require human playtesting. Do not infer these from synthetic input or successful bot navigation.
+## Saves and UI
 
+`SnowRun` keeps the course-specific top ten (`user://snow_records_massif_v2.json`), sorted, clamped to ten, malformed entries filtered. `SnowControls` persists `user://snow_controls_v2.json` (exactly the 15 remappable actions, unique, validated; v1 migration). Pause menu UI is authored for the 3840x2160 canvas (stretch mode canvas_items).
 
-## Terrain-seam correction
+## Performance notes
 
-Valid snow-only contacts now preserve the computed tangent candidate velocity after native contact resolution, with the artificial downward contact-pressure term removed before projection. This prevents internal triangle edges from deleting momentum. The restoration is excluded for solid hazard contacts and genuine steep walls; analytical surface normals disambiguate an internal-edge normal from a real rock face. Sweeps still determine position, and bad landing/drop checks still run. Clean normal landing tolerance is 24 m/s, while misaligned rotations and large physical drops retain consequences. The local terrain test verifies preserved approach speed, a real gap-crossing ollie, clean landing and charge payout. Longitudinal features/regions use logical distance divided by DISTANCE_SCALE=1.2; physical length and base grade, not fake timing, produce the final run duration.
-
+Startup: indexed height grid with border (one `height_at` per vertex), grid normals/curvature, AO baked from hazard buckets. Hazards are per-chunk static bodies with many shapes (fewer nodes). Runtime per-frame queries: camera one sphere cast; audio pass-by bucket query every 0.08 s; FX bough query; tumble one ray per tick only while crashed. See BUILD_STATUS.md for measured counts; real 4K/60 frame times must be measured on the target PC.

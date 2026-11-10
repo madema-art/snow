@@ -161,7 +161,7 @@ func _physics_process(delta: float) -> void:
 		embers.gravity = Vector3(0, -2.0, 0)
 	# Riding through low boughs knocks snow loose (canopies stay non-solid).
 	bough_cooldown = maxf(0.0, bough_cooldown - delta)
-	if mountain and bough_cooldown == 0.0 and speed > 6.0 and rider.recovery <= 0.0:
+	if mountain and bough_cooldown == 0.0 and speed > 6.0 and rider.recovery <= 0.0 and Engine.get_physics_frames() % 3 == 0:
 		for h in mountain.hazards_near(rider.global_position, 2.6, true):
 			var d := Vector2(h.x - rider.global_position.x, h.z - rider.global_position.z).length()
 			if d < h.w * 7.5 and d > h.w + 0.3:

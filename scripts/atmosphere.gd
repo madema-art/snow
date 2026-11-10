@@ -18,8 +18,10 @@ func _ready() -> void:
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 1.0
-	environment.ambient_light_energy = 0.55
+	# Mostly sky light, partly a neutral pale fill: blue-white shadows, not saturated blue.
+	environment.ambient_light_color = Color("c9d3de")
+	environment.ambient_light_sky_contribution = 0.6
+	environment.ambient_light_energy = 0.6
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
 	environment.tonemap_exposure = 0.66

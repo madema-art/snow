@@ -1,16 +1,16 @@
-# Locked decisions — second development pass
+# Locked decisions — after pass 3
 
-- Sole root D:\Snow; title SNOW; Godot 4.7.2 at D:\godot\Godot_v4.7.2-stable_win64.exe. Keep the existing main scene and modular native systems, no second project or downloads.
-- Replace 60–90 s demo target with approximately FIVE MINUTES for a good skilled descent. Beginners take longer; experts can improve through knowledge/risk/nitro. Do not slow the board, cap its speed, pad time or delay finish. Base movement constants remain unchanged.
-- Course massif_v2 is 9360 x 1200 m, ~3115 m vertical descent to finish Z=9180; backing terrain -200..9600. Five contiguous regions: Summit 0–1320, Cliffs 1320–3360, Forest 3360–5640, Broken Mountain 5640–7800, Final Descent 7800–9360.
-- Geography demands steering/brake/route choice: deep transverse cuts with bypass shoulders, curved gorge banks, rock buttress/chute, dense winding forest corridors, broken gullies and optional ramps/spur jumps. No protected straight center, mandatory checkpoints or invisible route barriers. No X/Z death zones; fatality is a physical impact/fall.
-- Right stick controls ONLY camera on ground AND in air. Full unlimited yaw, wide pitch, radial deadzone, analog response, three-second inactivity hold then gentle follow, smooth remappable RS-click recenter, real collision sweep. Aerial spins use LB/RB; flips use D-pad up/down. All non-reserved gameplay/camera actions remap/persist. LS steering/Menu pause remain reserved.
-- Old valid control mappings migrate into v2 without conflicts. New large-course records have a separate filename; original short-course records remain untouched. No mixed-course leaderboard.
-- Match visible solid geometry: cylindrical trunks, baked faceted convex rocks, identical terrain collision/render topology. Canopies are non-solid. Swept CharacterBody motion at 60 Hz; low-energy brushes may pass, hard normal impacts tumble, extreme direct impacts can be fatal. Actual fall/apex distance replaces coordinate kills.
-- ALL falls immediately wipe ALL velocity/speed/nitro and board glow. Severity-based recovery while timer continues; no injury/health. Local recovery avoids colliders/steep surfaces and rejects vertical warps >5 m. Bad attempts never record.
-- One stationary rider; push-off starts time. No active HUD, popups, score or charge meter. Board-only nitro capacity; sounds for charge, burst/loop/depletion/empty sputter. Pause/results alone shows elapsed hundredths, fastest ten, mappings and resume/restart/quit. Pause freezes midair; quick restart needs no confirmation.
-- 4K fullscreen, VSync, 60 FPS cap, 60 Hz physics, no graphics menu. Indexed 8 m terrain in 200 m chunks, regional MultiMesh culling, Compatibility + 2x MSAA, one short-range shadowed sun. Windows owns refresh.
-- Original synthesized environment sound, sheltered forest wind filtering and deterministic gusts; separate empty Music bus. No wildlife, helicopter, NPCs, opponents, intro, injury, background music, storms or avalanche simulation.
-- Automated whole-course proof uses only ordinary inputs. Camera/impact unit fixtures and visual benchmark positioning are explicitly separate. Physical Xbox, human difficulty, audio listening and sustained moving 4K profiling remain manual; never claim them from bots/screenshots. See QA.md and BUILD_STATUS.md.
-
-
+- Repository `madema-art/snow` is the source of truth; work on branches, merge via PR, never force-push `main`. `Start-Snow.bat` fast-forward pulls `main` then opens the project in Godot 4.7.2. Game code uses only `res://`/`user://`.
+- Course `massif_v2` (9360 x 1200 m, ~3115 m drop, five regions, spawn Z=8, finish Z=9180) is unchanged in layout and seeds; pass 3 added optional jump features (east summit rollers, Broken Mountain pinch gap, final tabletop) that do not change the reference route's comparability, so records stay in `snow_records_massif_v2.json`. A future geometry change that affects comparability must use a new records file and keep old files.
+- About FIVE MINUTES for a good skilled descent. No speed cap, clock padding, delayed finish or reduced acceleration. Gravity 20, drag 0.0075, boost 24 m/s², burn 0.25/s preserved.
+- Carving model: yaw rate limited by CARVE_ACCEL / speed (22 m/s²) and PIVOT_RATE (1.9 rad/s); edge engagement scales grip; braking breaks grip into a skid. Surfaces (powder/ice) are subtle and shared by physics, shader, audio and haptics.
+- Ollie on release of A with preload (+30%) and 0.14 s coyote time; floor snap suspended 0.2 s after a pop (fixes ollies at speed). Air drag in flight is 0.35 x riding drag. LS pre-aims the board in the air without moving the rider.
+- Trick rewards: air time, drop size, completed 180s, flips, grabs, combos, landing quality; per-trick and global fatigue prevent farming; cap 0.85 per landing. Clean 180s ride switch.
+- EVERY fall wipes ALL velocity, speed and nitro instantly. Tumbles are presentation only; get-up at the tumble rest point only if safe (≤9 m, no lip, no hazard, clear ray) — never an advantage. Recovery 1.2–7 s by severity, clock running. Fatal falls end without records; results appear after a short beat.
+- Right stick is ONLY camera. Free look is held relative to travel direction; 3 s idle settle; RS click smooth recenter; summit view holds until push-off. No random camera shake.
+- Trunk visual radius == collider radius (0.3 x scale, height 4.8 x scale); canopies non-solid. Rocks/outcrops collide with convex hulls of their exact visual vertices.
+- No HUD, ever. Pause/results is the only UI, also opened by controller disconnect and focus loss mid-run.
+- Compatibility renderer, 4K fullscreen, VSync, 60 FPS cap, 60 Hz physics, no graphics settings. MultiMesh instance colours must stay white (Compatibility multiplies vertex colour).
+- All audio is original synthesis from `tools/synth_audio.py`; Music bus stays empty. Master limiter, no clipping.
+- Exclusions: no wildlife, helicopter, NPCs/opponents, health/injury, score, background music, intro/countdown, avalanche, advanced storms, progression systems.
+- Automated whole-course proofs use ordinary inputs only; fixtures are labelled. Cloud runs never stand in for physical Xbox feel, listening tests or real 4K/60 profiling.

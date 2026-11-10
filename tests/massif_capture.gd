@@ -30,7 +30,7 @@ func go() -> void:
 			bench_camera.fov = camera.fov
 			bench_camera.far = camera.far
 		await RenderingServer.frame_post_draw
-		viewport.get_texture().get_image().save_png("res://work/pass2_%d.png" % int(z))
+		viewport.get_texture().get_image().save_png("res://work/pass3_%d.png" % int(z))
 		var samples: Array[float] = []
 		var gpu_samples: Array[float] = []
 		var begin := Time.get_ticks_usec()
@@ -47,22 +47,22 @@ func go() -> void:
 	# Look back and down into the real gorge using manual orbit positions.
 	rider.position = Vector3(-310, SnowMountain.height_at(-310,1480*SnowMountain.DISTANCE_SCALE)+0.7,1480*SnowMountain.DISTANCE_SCALE)
 	camera.reset()
-	camera.orbit = PI * 0.5
+	camera.look_yaw = PI * 0.5
 	camera.lift = 0.65
 	for i in 15: await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://work/pass2_gorge.png")
-	camera.orbit = PI
+	root.get_texture().get_image().save_png("res://work/pass3_gorge.png")
+	camera.look_yaw = PI
 	camera.lift = 0.2
 	camera.idle = 0
 	for i in 15: await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://work/pass2_behind.png")
+	root.get_texture().get_image().save_png("res://work/pass3_behind.png")
 	for child in game.get_children():
 		if child is SnowPauseMenu: child.show_menu()
 	for i in 8: await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://work/pass2_pause.png")
+	root.get_texture().get_image().save_png("res://work/pass3_pause.png")
 	paused = false
 	viewport.queue_free()
 	game.queue_free()

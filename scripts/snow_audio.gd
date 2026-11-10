@@ -96,7 +96,7 @@ func setup_buses() -> void:
 		limiter.ceiling_db = -0.8
 		AudioServer.add_bus_effect(master, limiter)
 	var sfx := ensure_bus("SFX", "Master")
-	AudioServer.set_bus_volume_db(sfx, -3.0)
+	AudioServer.set_bus_volume_db(sfx, 1.0)
 	if AudioServer.get_bus_effect_count(sfx) == 0:
 		var glue := AudioEffectCompressor.new()
 		glue.threshold = -16.0

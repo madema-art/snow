@@ -1,19 +1,38 @@
-# Game design — Massif pass 2
+# Game design — pass 3
 
-SNOW is one rider attempting a dangerous, enormous mountain time trial. The current skilled-descent target is about five minutes; reaching the bottom should require route knowledge and active steering/braking. Beginners should take longer and experts should improve through faster risky lines and earned nitro. Never manufacture time through speed caps, delayed finish or altered clocks.
+**One snowboarder. One enormous mountain. One objective: reach the bottom as fast as possible.**
 
-The actual course is 9.36 km long and 1.2 km wide with about 3.115 km net vertical change. Five blended geographical regions — Summit, Cliffs, Forest, Broken Mountain, Final Descent — form one world. Broad snow shoulders, deep transverse ravines, a buttress/chute, dense winding forest corridors, gullies, ridges, boulders and optional jump lines make geographical route selection necessary. Going straight encounters a physical gorge fall. There is no protected straight lane, invisible route wall or mandatory checkpoint. MOUNTAIN.md records locations and route tradeoffs.
+SNOW puts the player alone on the summit of the Massif. There are no runs, signs, lifts, opponents or helicopters — just a mountain that was never designed for snowboarding. Pushing off starts the clock; gravity does the rest. The clock only stops when the game is paused or the rider crosses the valley finish.
 
-The rider starts stationary; A push-off starts time, not camera motion. Gravity/carving/inertia, brake/skid, tuck, ollie and high-speed boost are preserved. Successful landed spins/flips/grabs and simple jumps create stored nitro, with harder maneuvers paying more. The snowboard alone changes dark→orange→bright; no capacity UI. Boost adds strong forward acceleration without extra steering, lasts variable bursts, has distinctive sounds and sputters when empty.
+## Pillars
 
-Every fall immediately wipes ALL nitro and velocity. Severity determines recovery delay/pose; time continues through nonfatal falls. Fatality comes from real large falls or extreme direct collisions, not coordinate thresholds. No injuries, health or score. Trunk and faceted rock colliders match visible solid geometry, and terrain/render topology is shared. Instant restart resets everything without confirmation.
+1. **The board is the joy.** Gravity-driven acceleration, a carve whose turning is limited by how much lateral acceleration an edge can hold, real inertia, a brake that skids, a tuck that cuts drag, a preloaded ollie, satisfying air and weighty, honest landings. Low speed is comfortable; high speed demands earlier, committed turns but stays controllable.
+2. **The mountain is the challenge.** Difficulty comes from geography: gorges, cliff bands, a rock buttress, dense forest, broken ridges and cuts. Hazards announce themselves early (scoured, darker lips; exposed stone; the camera rises near drops). Safe lines are discoverable by looking; dangerous shortcuts look dangerous. Straight down is never safe.
+3. **Risk buys speed.** Landed tricks charge the board; nitro is enormous forward thrust. Any fall erases ALL speed and ALL nitro. The tension between charging the board and keeping it is the core loop.
+4. **Nothing between player and mountain.** No HUD, ever. Board glow, sound, camera, spray and rumble carry every piece of feedback.
+5. **Sound is half the speed.** Snow hiss under the board, wind that rises into a roar, silence-of-friction in the air, a heavy landing, a nitro voice nobody forgets, a sputter you recognise blind.
 
-Left stick always steers. Right stick ONLY controls the free camera, on snow and in air: full 360 yaw, broad pitch, analog deadzone/rate, smooth control, 3-second hold before gentle chase settling, explicit smooth RS-click recenter, speed lookahead and sphere collision. Bumpers handle aerial yaw, D-pad up/down handles flips; all non-reserved actions are remappable/persisted. Menu always pauses/resumes; fixed UI navigation remains independent of gameplay mappings.
+## Rules
 
-Absolutely no HUD or popups/instructions while riding. Pause/results alone shows hundredth elapsed time, top ten completed runs, remaps and resume/restart/quit. Pause freezes simulation, camera, sound and time, including midair. A clear orange valley finish stops time and writes a course-specific qualifying record once. Old short-course records remain preserved separately.
+- **Start:** one stationary rider at the summit; look around freely; A pushes off and starts the clock. No countdown or intro.
+- **Riding:** LS steers/carves; LT brake-skid; RT tuck; A hold/release ollie (longer crouch, higher pop; works up to ~0.14 s after a lip); RS camera only.
+- **Tricks:** in the air LB/RB spin, D-pad flips, X grab. Rewards (stored nitro) come only on a clean landing and scale with air time, the size of the drop, completed 180s, completed flips, grab time, combinations of different elements and landing quality. Tiny flat hops pay nothing. Repeating the same trick, or chaining landings back-to-back, quickly devalues them (fatigue recovers with riding time). A 180 rides away switch.
+- **Landing:** judged on spin/flip completion, board-vs-travel alignment and impact into the slope. Misaligned or overly violent landings are falls.
+- **Nitro:** hold B to spend; release to keep the rest; the board dims as it burns. Pure forward thrust: no extra grip. Pressing with an empty board sputters.
+- **Falls:** EVERY fall instantly zeroes velocity, speed and stored nitro and darkens the board. A visual tumble plays out (presentation only), then the rider gets up where the tumble safely stopped (never past a lip or hazard, never more than a few metres). Recovery time scales with severity — minor (~1.5 s), moderate (~2.5–3.5 s), severe (up to 7 s) — and counts toward the run.
+- **Fatal:** large cliff drops and gorge falls (real apex-to-ground distance), and extreme direct impacts into trees/rocks/walls end the run. The moment plays out, then results appear. Fatal runs never enter the records.
+- **Finish:** a timber gate with banners and pennant lines at the valley floor. Crossing it stops the clock; the rider skids to a stop; results show the time and its top-ten rank.
+- **Restart:** View (or the menu) restores summit, stillness, zero nitro, zero speed, zero time and fresh state instantly.
+- **Pause:** Menu, controller disconnect, or loss of window focus mid-run. Pause freezes physics, timer, camera, audio and particles (midair too).
 
-Target 3840x2160 fullscreen, VSync, 60 render FPS cap and 60 Hz physics; no settings menu. Windows determines monitor refresh. Native indexed chunks, local MultiMeshes, simple geometry and atmospheric depth prioritize scale/readability. Procedural synthesized snow/edge/wind/impact/nitro audio reacts to state; forest shelters/filter wind and exposed regions gust. Separate empty Music bus. No helicopter, wildlife, NPCs, opponents, splash/countdown, music, injury, avalanche or advanced storms.
+## Camera
 
-Actual validation and limits: BUILD_STATUS.md and QA.md. Bot route knowledge and synthetic controller events do not establish beginner/expert human completion distributions or physical Xbox feel. Low-poly art, pose animation, synthesized audio and optional jump fairness need further work; retain all locked design constraints during polish.
+The right stick is a free look that is held relative to the direction of travel, so a look over the shoulder stays put while the rider carves. Unlimited horizontal orbit, -0.35..1.25 rad pitch, radial deadzone, analog rate with smoothed acceleration. After three seconds without input it settles gently back behind the rider; RS click recenters smoothly. At the summit, before push-off, any chosen view holds indefinitely. The chase framing pulls back and widens with speed (and a little more under nitro), aims ahead toward the snow the rider will reach, rises when the ground ahead falls away faster than the slope (lips, gorges), loosens in the air without following spins/flips, holds still and widens during a tumble, and returns to the fall line on get-up. Collisions retract instantly and re-extend slowly, so forests never make it pump. Landings nod the view through a damped spring; there is no random handheld shake.
 
+## Presentation targets
 
+Cinematic, realistic-leaning daylight: low raking sun, blue-white shadowed snow, atmospheric depth over kilometres, serrated surrounding ranges, snow-loaded conifers, faceted stone and cliff outcrops, wind ripples and glints on snow, spray, powder bursts and persistent board tracks. Speed should feel distinct at 20, 60 and 120 km/h through FOV, framing, spray, wind layers, whistle/flutter, passing-tree whooshes and rumble — never through screen-obscuring effects.
+
+## Exclusions (locked)
+
+No HUD, score, minimap, prompts, health/injury, wildlife, NPCs, opponents, helicopter, intro/countdown, background music, avalanche or advanced storms, progression systems. See DECISIONS.md.
