@@ -67,4 +67,8 @@ Course records: `user://snow_records_massif_v2.json` (pass-3 changes keep the sa
 | [docs/BUILD_STATUS.md](docs/BUILD_STATUS.md) | What is implemented, measured results, what still needs hands-on testing |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Locked decisions |
 
-All art, animation and sound effects are original and procedural/synthesized in this repository (no downloaded assets). The soundtrack is the owner's: put game-ready `.ogg`/`.mp3`/`.wav` files in `assets/music/` and they play in filename order (looping) on the `Music` bus; with no files the game is simply silent of music.
+All art, animation and sound effects are original and procedural/synthesized in this repository (no downloaded assets). 
+
+## Soundtrack
+
+Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades, gentle ducking under crashes and nitro ignition. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. To add music, commit `.mp3`/`.ogg` files to `assets/music/`; no playlist editing is needed.

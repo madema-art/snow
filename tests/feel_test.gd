@@ -204,28 +204,84 @@ func go() -> void:
 	check(run.last_rank == 1 and run.records == [100.0, 110.0, 120.0], "finish reports its top-ten rank")
 	check(controls.describe("look_left") == "RS left" and controls.describe("brake") == "LT", "readable binding names in the menu")
 
-	# --- Owner soundtrack player -------------------------------------------
+	# --- Soundtrack manager (real files in res://assets/music/) ------------
 	var music: SnowMusic = game.get_node("Music")
-	check(music.player.bus == "Music" and AudioServer.get_bus_index("Music") >= 0, "soundtrack player is routed to the Music bus")
-	music.music_dir = "user://test_music_empty/"
-	music.scan_and_play()
-	check(music.tracks.is_empty() and not music.player.playing, "no soundtrack files: the game runs silently without errors")
+	var opener := music.music_dir.path_join(SnowMusic.OPENING_TRACK)
+	check(music.tracks.size() >= 7 and music.players[0].bus == "Music" and music.players[1].bus == "Music", "soundtrack auto-discovers %d songs, routed only to the Music bus" % music.tracks.size())
+	check(not music.history.is_empty() and music.history[0] == opener and music.players[music.active].playing, "every launch opens with 'Alpine Shift (Take 2) (Remix).mp3'")
+	music.start() # a second "launch"
+	check(music.history[0] == opener, "the opener is fixed, not random")
+	var first_cycle: Array[String] = []
+	for i in music.tracks.size() - 1:
+		music.advance()
+		first_cycle.append(music.current)
+	var unique_first: Array[String] = []
+	for t in first_cycle:
+		if not t in unique_first: unique_first.append(t)
+	check(unique_first.size() == music.tracks.size() - 1 and not opener in first_cycle, "after the opener, every OTHER song plays once before any repeat")
+	check(music.fading, "song changes crossfade")
+	for i in 200:
+		await process_frame
+	check(not music.fading and not music.players[1 - music.active].playing, "crossfade completes and the outgoing song stops")
+	# Simulate many later cycles (playlist logic only) to check the bag rules.
+	var sequence: Array[String] = [music.current]
+	var cycles_ok := true
+	for c in 25:
+		var cycle_items: Array[String] = []
+		for i in music.tracks.size():
+			var name := music.next_track_name()
+			music.current = name
+			cycle_items.append(name)
+			sequence.append(name)
+		var seen: Array[String] = []
+		for t in cycle_items:
+			if not t in seen: seen.append(t)
+		if seen.size() != music.tracks.size(): cycles_ok = false
+	var repeats := 0
+	for i in range(1, sequence.size()):
+		if sequence[i] == sequence[i - 1]: repeats += 1
+	check(cycles_ok, "later cycles reshuffle ALL songs, opener included, each once per cycle")
+	check(repeats == 0, "no song ever plays twice in a row, across 25 cycle boundaries")
+	# Pause / resume / restart / results behaviour on the real menu.
+	menu.restart()
+	await press_and_run(30)
+	var playing_track := music.current
+	var history_size := music.history.size()
+	menu.show_menu()
+	check(music.paused and music.players[music.active].stream_paused, "pausing the game pauses the soundtrack")
+	var paused_at := music.players[music.active].get_playback_position()
+	for i in 20: await process_frame
+	check(absf(music.players[music.active].get_playback_position() - paused_at) < 0.05, "paused music holds its position")
+	menu.hide_menu()
+	check(not music.paused and not music.players[music.active].stream_paused and music.current == playing_track, "resume continues the same song from the same place")
+	menu.restart()
+	await press_and_run(10)
+	check(music.current == playing_track and music.history.size() == history_size, "restarting a descent never restarts or skips the soundtrack")
+	run.state = "running"
+	run.finish()
+	await frames(150)
+	check(menu.panel.visible and not music.paused, "results after a finish keep the music playing")
+	menu.restart()
+	var before_db := AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))
+	rider.sound_event.emit("crash", 0.8)
+	for i in 20: await process_frame
+	check(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music")) < before_db - 2.0, "music ducks gently under a crash")
+	# Fallbacks: opener missing, and no music at all.
 	DirAccess.make_dir_recursive_absolute("user://test_music/")
-	for name in ["b_second.wav", "a_first.wav"]:
+	var sample := FileAccess.get_file_as_bytes("res://assets/music/Powder Rush (Take 1).mp3")
+	var test_copies := ["Song A.mp3", "Song B.mp3", "notes.txt"]
+	for name in test_copies:
 		var f := FileAccess.open("user://test_music/" + name, FileAccess.WRITE)
-		f.store_buffer(FileAccess.get_file_as_bytes("res://audio/charge_small.wav")) # FIXTURE file, not music
+		f.store_buffer(sample) # FIXTURE copies of an owner track
 		f.close()
 	music.music_dir = "user://test_music/"
-	music.scan_and_play()
-	await process_frame
-	check(music.tracks.size() == 2 and music.tracks[0].ends_with("a_first.wav") and music.player.playing, "soundtrack files play in filename order")
-	music.player.stop()
-	music.next_track()
-	check(music.current_track().ends_with("b_second.wav"), "playlist advances to the next song")
-	music.next_track()
-	check(music.current_track().ends_with("a_first.wav"), "playlist loops back to the first song")
-	music.player.stop()
-	for name in ["b_second.wav", "a_first.wav"]:
+	music.start()
+	check(music.tracks.size() == 2 and music.players[music.active].playing and music.history[0].get_file() in ["Song A.mp3", "Song B.mp3"], "missing opener falls back to another song; non-audio files ignored")
+	music.music_dir = "user://test_music_none/"
+	music.start()
+	music.advance()
+	check(music.tracks.is_empty() and not music.players[0].playing and not music.players[1].playing, "no music installed: silent, no errors")
+	for name in test_copies:
 		DirAccess.remove_absolute("user://test_music/" + name)
 	DirAccess.remove_absolute("user://test_music/")
 	for a in ["boost", "steer_left", "steer_right", "jump"]:

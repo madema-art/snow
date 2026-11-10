@@ -32,10 +32,12 @@ func _ready() -> void:
 	add_child(haptics)
 	var music := SnowMusic.new()
 	music.name = "Music"
+	music.rider = rider
 	add_child(music)
 	var menu := SnowPauseMenu.new()
 	menu.run = run
 	menu.controls = controls
 	menu.rider = rider
 	menu.camera = camera
+	menu.music = music
 	add_child(menu)

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c0vkay0gd1nqp"
+path="res://.godot/imported/Powder Rush with Melodic Synth Leads.mp3-bacbf91961e0b296186dce1e9448925c.mp3str"
+
+[deps]
+
+source_file="res://assets/music/Powder Rush with Melodic Synth Leads.mp3"
+dest_files=["res://.godot/imported/Powder Rush with Melodic Synth Leads.mp3-bacbf91961e0b296186dce1e9448925c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

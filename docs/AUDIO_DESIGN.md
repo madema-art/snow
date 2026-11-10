@@ -38,7 +38,13 @@ Surface weights are the same `surface_at()` data the physics and terrain shader 
 
 ## Mix
 
-Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (+1 dB) glue compressor (-16 dB, 3:1). Board, MountainWind (low-pass 16 kHz → 2.3 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master (-4 dB): `scripts/music.gd` plays the owner's soundtrack from `res://assets/music/` (every .ogg/.mp3/.wav in filename order, playlist loops, continues through pause and restarts); with no files it stays silent. Agents never generate or alter music. Everything else pauses with the tree.
+Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (+1 dB) glue compressor (-16 dB, 3:1). Board, MountainWind (low-pass 16 kHz → 2.3 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master at −8 dB (owner tracks measure −14 to −20 LUFS; the gameplay mix measures −18.4 LUFS integrated), ducked a further −5 dB for ~1–2 s under crashes and nitro ignition. Everything else pauses with the tree.
+
+## Soundtrack (scripts/music.gd)
+
+Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades, gentle ducking under crashes and nitro ignition. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. Agents never add, generate or alter songs.
+
+Implementation: two AudioStreamPlayers alternate for crossfades; discovery merges `ResourceLoader.list_directory()` with `DirAccess` listings (stripping `.import`/`.remap`), so imported, not-yet-imported (decoded with `AudioStreamMP3/OggVorbis.load_from_file`) and exported files are all found; songs are forced non-looping; the bag is refreshed from disk at every cycle so new songs join without a restart. The node always processes so finish/fatal results keep playing; the pause menu calls `set_paused()` for explicit pauses (Menu, controller disconnect, focus loss). Verified through the real mixer with Movie Maker (`tests/movie_music.gd`): opener audible at launch, silence while paused, resume at the same position, seamless crossfade, no clipping.
 
 ## Haptics (scripts/haptics.gd)
 

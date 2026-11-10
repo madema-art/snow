@@ -13,6 +13,7 @@ var run: SnowRun
 var controls: SnowControls
 var rider: SnowRider
 var camera: SnowCamera
+var music: SnowMusic
 var panel: Control
 var title: Label
 var status: Label
@@ -225,6 +226,10 @@ func refresh() -> void:
 func show_menu() -> void:
 	pending_show = -1.0
 	get_tree().paused = true
+	# An explicit pause also pauses the soundtrack in place; results screens after a
+	# finish or fatal fall let it play on.
+	if music and run.state in ["running", "ready"]:
+		music.set_paused(true)
 	panel.show()
 	Input.stop_joy_vibration(0)
 	for pad in Input.get_connected_joypads():
@@ -241,6 +246,8 @@ func hide_menu() -> void:
 	capturing = ""
 	panel.hide()
 	get_tree().paused = false
+	if music:
+		music.set_paused(false)
 
 func restart() -> void:
 	capturing = ""
@@ -251,6 +258,8 @@ func restart() -> void:
 	camera.reset()
 	panel.hide()
 	get_tree().paused = false
+	if music:
+		music.set_paused(false) # restarting a descent never restarts the soundtrack
 
 func capture(action: String) -> void:
 	capturing = action

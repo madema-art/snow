@@ -29,7 +29,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/prototype_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 ```
 
-Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack player (Music bus, silent with no files, filename order, looping playlist). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
+Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
 ## 4. Local terrain / shortcut fixtures
 
@@ -66,6 +66,15 @@ ffmpeg -i work/movie/ride.avi -vn work/movie/ride.wav
 ```
 
 Scripted ~32 s ride: summit ambience, push-off, tuck, three trick jumps (180, 180+grab), hard carves, nitro, empty sputter, brake, and a crash into ONE fixture tree with tumble and get-up. Movie Maker renders deterministically and records the real bus output, so levels, peaks and spectra can be analysed without an audio device. It is not a listening test.
+
+## 7b. Soundtrack through the real mixer
+
+```bash
+xvfb-run -a -s "-screen 0 320x180x24" godot --path . --windowed --resolution 320x180 --fixed-fps 60 --rendering-driver opengl3 --write-movie work/movie/music.avi --script res://tests/movie_music.gd
+ffmpeg -i work/movie/music.avi -vn work/movie/music.wav && python3 tools/analyze_mix.py work/movie/music.wav
+```
+
+Expect the opener at launch, silence while paused (4–7 s), resume at the same position, then a crossfade.
 
 ## 8. Render cost / 4K probe
 

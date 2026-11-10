@@ -29,7 +29,7 @@ Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It
 
 **FX** (`scripts/snow_fx.gd`): edge spray from the working edge, landing/crash/tumble bursts, nitro embers, snow falling from boughs you ride through, persistent board tracks for the whole run.
 
-**Audio** (`tools/synth_audio.py`, `audio/`, `scripts/snow_audio.gd`, `scripts/haptics.gd`): 32 original synthesized sounds; surface-aware board layers, three wind layers plus clothing, landing/crash/tumble tiers, the nitro voice (ignite → resonant build → "singing ice" sustain → deplete) and the empty sputter; positional pass-by whooshes; exposure/forest-shelter/cliff-reverb environment; limiter and glue compression. **Soundtrack:** `scripts/music.gd` plays the owner's files from `res://assets/music/` (added to `main` during this pass) on the Music bus in filename order with a looping playlist, and stays silent when the folder has no audio. Controller haptics for snow texture, landings, crash tiers, nitro and sputter.
+**Audio** (`tools/synth_audio.py`, `audio/`, `scripts/snow_audio.gd`, `scripts/haptics.gd`): 32 original synthesized sounds; surface-aware board layers, three wind layers plus clothing, landing/crash/tumble tiers, the nitro voice (ignite → resonant build → "singing ice" sustain → deplete) and the empty sputter; positional pass-by whooshes; exposure/forest-shelter/cliff-reverb environment; limiter and glue compression. **Soundtrack:** `scripts/music.gd` manages the owner's seven songs (merged from `main` during this pass): fixed opener `Alpine Shift (Take 2) (Remix).mp3`, shuffle bag of the others, full reshuffles with no back-to-back repeats, 2.5 s crossfades, Music bus at −8 dB with ducking under crashes/nitro, pause-in-place on explicit pauses, uninterrupted through crashes/finishes/restarts, automatic discovery of new .mp3/.ogg files, graceful fallbacks. The previous no-music rule is superseded. Controller haptics for snow texture, landings, crash tiers, nitro and sputter.
 
 **UI / controls**: restyled frosted pause/results screen (time, top ten with the new entry highlighted, readable remap names), auto-pause on controller disconnect and window focus loss, results delayed briefly after a finish/fatal crash. Same 15 remappable actions; control and record files unchanged.
 
@@ -39,7 +39,7 @@ Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It
 |---|---|
 | Import / parse | exit 0, no errors |
 | `prototype_test.gd` (core rules, input, persistence) | **40/40 passed** |
-| `feel_test.gd` (new pass-3 systems + soundtrack player) | **37/37 passed** |
+| `feel_test.gd` (new pass-3 systems + soundtrack manager) | **48/48 passed** |
 | `terrain_test.gd` (local fixtures) | **5/5 passed**: seam momentum; spur ollie clears and earns **0.18** nitro; Broken Mountain pinch gap clears with an ordinary ollie at ~30 m/s and earns **0.22** nitro |
 | `mountain_test.gd` camera checks | 8/8 passed (also `--camera-only`) |
 | A: straight push-off, no input | Rock falls, then **fatal gorge fall at 1:19.57**, Z≈1803 m — no completion |
@@ -70,7 +70,7 @@ Counts include all passes (4 shadow splits + main) and were taken after merging 
 
 ## Audio measurement (not a listening test)
 
-Movie Maker capture of the real bus output during a scripted 31 s ride (summit, push-off, three trick jumps, carves, nitro, empty sputter, brake, crash with tumble and get-up), analysed with `tools/analyze_mix.py`. First capture: no clipped samples, peak −5.6 dBFS, −26.8 dB RMS, so the SFX bus was raised 4 dB. Final capture: **no clipped samples, peak −1.6 dBFS, −23.0 dB RMS**; quiet summit ambience (≈ −42 dB RMS); board hiss (2–8 kHz) drops ≈ 8 dB within 0.1 s of leaving the snow; landings add ≈ 15 dB of sub-150 Hz energy; the crash, empty-nitro sputter and nitro ignition stand clearly above the riding bed. The soundtrack folder held no audio files during these captures. Loop seams were checked numerically. Nobody has listened to the mix yet.
+Movie Maker capture of the real bus output during a scripted 31 s ride (summit, push-off, three trick jumps, carves, nitro, empty sputter, brake, crash with tumble and get-up), analysed with `tools/analyze_mix.py`. First capture: no clipped samples, peak −5.6 dBFS, −26.8 dB RMS, so the SFX bus was raised 4 dB. Final capture: **no clipped samples, peak −1.6 dBFS, −23.0 dB RMS**; quiet summit ambience (≈ −42 dB RMS); board hiss (2–8 kHz) drops ≈ 8 dB within 0.1 s of leaving the snow; landings add ≈ 15 dB of sub-150 Hz energy; the crash, empty-nitro sputter and nitro ignition stand clearly above the riding bed. The soundtrack was not yet installed during the ride captures. A separate soundtrack capture (`tests/movie_music.gd`) through the real mixer showed the opener at launch (≈ −27 dB RMS with summit ambience), digital silence while paused, resume at the same position (3.99 s → 4.00 s), a seamless crossfade to the next song and no clipping. Track loudness measured −14 to −20 LUFS (ffmpeg EBU R128) against −18.4 LUFS for the gameplay mix. Loop seams were checked numerically. Nobody has listened to the mix yet.
 
 ## Requires hands-on testing on the target PC
 

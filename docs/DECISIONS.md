@@ -11,6 +11,6 @@
 - Trunk visual radius == collider radius (0.3 x scale, height 4.8 x scale); canopies non-solid. Rocks/outcrops collide with convex hulls of their exact visual vertices.
 - No HUD, ever. Pause/results is the only UI, also opened by controller disconnect and focus loss mid-run.
 - Compatibility renderer, 4K fullscreen, VSync, 60 FPS cap, 60 Hz physics, no graphics settings. MultiMesh instance colours must stay white (Compatibility multiplies vertex colour).
-- All sound effects are original synthesis from `tools/synth_audio.py`. The soundtrack is the owner's files in `res://assets/music/`, played by SnowMusic on the Music bus; the game must work with none. Agents never add or alter music. Master limiter, no clipping.
+- All sound effects are original synthesis from `tools/synth_audio.py`. Background music (previously prohibited) is now the owner's soundtrack in `res://assets/music/`, played by SnowMusic on the Music bus with the fixed opener `Alpine Shift (Take 2) (Remix).mp3`, shuffle bag, no back-to-back repeats, crossfades and pause-in-place; the game must work with none. Agents never add or alter music. Master limiter, no clipping.
 - Exclusions: no wildlife, helicopter, NPCs/opponents, health/injury, score, agent-made music, intro/countdown, avalanche, advanced storms, progression systems.
 - Automated whole-course proofs use ordinary inputs only; fixtures are labelled. Cloud runs never stand in for physical Xbox feel, listening tests or real 4K/60 profiling.

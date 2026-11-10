@@ -17,7 +17,7 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 | scripts/chase_camera.gd | `SnowCamera`: travel-relative free look, analog rate smoothing, idle settle/recenter, speed framing/FOV, drop anticipation, sprung anchor, landing nod, asymmetric sphere collision |
 | scripts/snow_fx.gd | `SnowFX`: edge spray, landing/crash/tumble bursts, nitro embers, bough snow, persistent board tracks (ribbon segments) |
 | scripts/snow_audio.gd | `SnowAudio`: bus graph, 10 surface/wind/nitro loops mixed from rider state, 12-voice one-shot pool with stealing, 4 positional voices (tree pass-bys, boughs), environment (exposure, forest shelter, cliff reverb) |
-| scripts/music.gd | `SnowMusic`: owner soundtrack from `res://assets/music/` on the Music bus, filename order, looping playlist, silent when empty |
+| scripts/music.gd | `SnowMusic`: soundtrack manager — fixed opener, shuffle bag without back-to-back repeats, crossfades, ducking, pause-in-place, auto-discovery in editor/exports, silent when empty |
 | scripts/haptics.gd | `SnowHaptics`: continuous snow rumble + event pulses (landing, crash tiers, nitro, empty sputter) on the first connected pad |
 | scripts/controls.gd | `SnowControls`: default bindings, fixed LS steering and UI events, validated remaps with conflict swap, persistence, v1 migration, readable names |
 | scripts/run_state.gd | `SnowRun`: ready/running/finished/ended, clock, top-ten persistence, last rank |
@@ -62,7 +62,7 @@ Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with sun scatter and ae
 
 ## Audio
 
-See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue compressor) ← Board, MountainWind (low-pass for forest shelter), Impacts (reverb tuned by region/enclosure) ← Nitro. Music → Master (owner soundtrack via SnowMusic).
+See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue compressor) ← Board, MountainWind (low-pass for forest shelter), Impacts (reverb tuned by region/enclosure) ← Nitro. Music → Master (−8 dB, owner soundtrack via SnowMusic, separate from every game sound).
 
 ## Saves and UI
 
