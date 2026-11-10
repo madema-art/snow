@@ -1,0 +1,15 @@
+# Godot generated caches; preserve all original project assets and scenes.
+.godot/
+.import/
+*.tmp
+*.bak
+# OS/editor-specific
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+# Local credentials should never be committed.
+.env
+.env.*
+# Local validation captures and logs
+work/

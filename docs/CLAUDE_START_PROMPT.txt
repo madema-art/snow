@@ -1,0 +1,8 @@
+Work directly in D:\Snow using D:\godot\Godot_v4.7.2-stable_win64.exe. Read CLAUDE.md, README.md and docs/GAME_DESIGN.md, MOUNTAIN.md, ARCHITECTURE.md, BUILD_STATUS.md, DECISIONS.md and QA.md first. This is SNOW development pass 2, a large dangerous five-minute mountain, not the obsolete short demo.
+
+Preserve the 9.36 km x 1.2 km course, ~3.115 km vertical descent, geographical multiple routes, physical impact/fall fatalities and fixed seeded conditions. Never reintroduce a protected straight center lane, invisible death walls, mandatory checkpoints, speed limits or clock padding. Keep exciting acceleration/inertia and improve fair terrain contact rather than making the rider unpleasant to control.
+
+LS permanently steers; Menu permanently pauses. RS independently controls a full 360/wide-vertical camera on snow and in air; never bind aerial tricks to camera input. RS-click recenter, bumper spins and D-pad flips are all remappable. Preserve fixed UI navigation, legacy control migration, course-specific records, board-only nitro capacity, complete speed/nitro clearing on all falls, severity recovery, exact push-off/pause/finish time and instant restart. No active HUD, injury/score, wildlife, helicopter, opponents, intro, music, avalanche or advanced storms.
+
+Use the actual native code. Run import, core, terrain fixture, input-only whole-course navigation and explicit 4K rendered checks from QA.md; distinguish headless bots/fixtures from physical controller, audio or human gameplay testing. Document measured times, failures, performance limits and actual implemented changes, never just proposals. Prioritize the outstanding manual tests and next work listed in BUILD_STATUS.md.
+

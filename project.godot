@@ -1,0 +1,29 @@
+config_version=5
+
+[application]
+config/name="SNOW"
+config/description="A HUD-free mountain time trial."
+run/main_scene="res://scenes/main.tscn"
+run/max_fps=60
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=3840
+window/size/viewport_height=2160
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/size/mode=3
+window/vsync/vsync_mode=1
+window/stretch/mode="canvas_items"
+
+[filesystem]
+import/blender/enabled=false
+
+[physics]
+common/physics_ticks_per_second=60
+3d/default_gravity=20.0
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=1

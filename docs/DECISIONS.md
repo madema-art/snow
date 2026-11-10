@@ -1,0 +1,16 @@
+# Locked decisions — second development pass
+
+- Sole root D:\Snow; title SNOW; Godot 4.7.2 at D:\godot\Godot_v4.7.2-stable_win64.exe. Keep the existing main scene and modular native systems, no second project or downloads.
+- Replace 60–90 s demo target with approximately FIVE MINUTES for a good skilled descent. Beginners take longer; experts can improve through knowledge/risk/nitro. Do not slow the board, cap its speed, pad time or delay finish. Base movement constants remain unchanged.
+- Course massif_v2 is 9360 x 1200 m, ~3115 m vertical descent to finish Z=9180; backing terrain -200..9600. Five contiguous regions: Summit 0–1320, Cliffs 1320–3360, Forest 3360–5640, Broken Mountain 5640–7800, Final Descent 7800–9360.
+- Geography demands steering/brake/route choice: deep transverse cuts with bypass shoulders, curved gorge banks, rock buttress/chute, dense winding forest corridors, broken gullies and optional ramps/spur jumps. No protected straight center, mandatory checkpoints or invisible route barriers. No X/Z death zones; fatality is a physical impact/fall.
+- Right stick controls ONLY camera on ground AND in air. Full unlimited yaw, wide pitch, radial deadzone, analog response, three-second inactivity hold then gentle follow, smooth remappable RS-click recenter, real collision sweep. Aerial spins use LB/RB; flips use D-pad up/down. All non-reserved gameplay/camera actions remap/persist. LS steering/Menu pause remain reserved.
+- Old valid control mappings migrate into v2 without conflicts. New large-course records have a separate filename; original short-course records remain untouched. No mixed-course leaderboard.
+- Match visible solid geometry: cylindrical trunks, baked faceted convex rocks, identical terrain collision/render topology. Canopies are non-solid. Swept CharacterBody motion at 60 Hz; low-energy brushes may pass, hard normal impacts tumble, extreme direct impacts can be fatal. Actual fall/apex distance replaces coordinate kills.
+- ALL falls immediately wipe ALL velocity/speed/nitro and board glow. Severity-based recovery while timer continues; no injury/health. Local recovery avoids colliders/steep surfaces and rejects vertical warps >5 m. Bad attempts never record.
+- One stationary rider; push-off starts time. No active HUD, popups, score or charge meter. Board-only nitro capacity; sounds for charge, burst/loop/depletion/empty sputter. Pause/results alone shows elapsed hundredths, fastest ten, mappings and resume/restart/quit. Pause freezes midair; quick restart needs no confirmation.
+- 4K fullscreen, VSync, 60 FPS cap, 60 Hz physics, no graphics menu. Indexed 8 m terrain in 200 m chunks, regional MultiMesh culling, Compatibility + 2x MSAA, one short-range shadowed sun. Windows owns refresh.
+- Original synthesized environment sound, sheltered forest wind filtering and deterministic gusts; separate empty Music bus. No wildlife, helicopter, NPCs, opponents, intro, injury, background music, storms or avalanche simulation.
+- Automated whole-course proof uses only ordinary inputs. Camera/impact unit fixtures and visual benchmark positioning are explicitly separate. Physical Xbox, human difficulty, audio listening and sustained moving 4K profiling remain manual; never claim them from bots/screenshots. See QA.md and BUILD_STATUS.md.
+
+
