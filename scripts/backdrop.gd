@@ -31,14 +31,14 @@ func course_base(z: float) -> float:
 
 func backdrop_height(x: float, z: float) -> float:
 	var ax := absf(x)
-	var inside_z := z >= -200.0 and z <= 9600.0
+	var inside_z := z > -200.0 and z < 9600.0
 	var r := ridges.get_noise_2d(x, z) * 0.5 + 0.5
 	var d := detail.get_noise_2d(x, z)
 	if ax < 600.0 and inside_z:
 		return course_base(z) - 600.0
 	var h := 0.0
 	if ax <= 600.0:
-		if z < -200.0:
+		if z <= -200.0:
 			h = SnowMountain.height_at(x, -200.0) - 6.0 - (-200.0 - z) * 0.5
 		else:
 			h = SnowMountain.height_at(x, 9600.0) - 6.0 - (z - 9600.0) * 0.07
@@ -84,7 +84,7 @@ func build() -> void:
 			var x0 := -X_EXTENT + ix * DX
 			var z0 := Z_MIN + iz * DZ
 			# Skip cells completely under the playable course.
-			if absf(x0) < 600.0 and absf(x0 + DX) <= 600.0 and z0 >= -200.0 and z0 + DZ <= 9600.0:
+			if x0 >= -600.0 and x0 + DX <= 600.0 and z0 >= -200.0 and z0 + DZ <= 9600.0:
 				continue
 			indices.append_array(PackedInt32Array([a, a + 1, a + nx, a + 1, a + nx + 1, a + nx]))
 	var arrays := []
