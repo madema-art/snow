@@ -159,11 +159,6 @@ def write_wav(name, data, loop=False):
     print(f"{name:18s} {frames / SR:5.2f}s {'stereo' if channels == 2 else 'mono  '} {'loop' if loop else ''}")
 
 
-def stereo(x, width_seed, width=0.35):
-    """Decorrelated stereo from mono by mixing in a differently-seeded copy."""
-    return x
-
-
 # --------------------------------------------------------------------- loops
 def snow_packed():
     n = int(4.0 * SR)
@@ -226,7 +221,7 @@ def wind_base():
     n = int(8.0 * SR)
     low = shaped_noise(n, lambda f: band(f, 25, 380, 1.3) * (f / 100) ** -0.6, 151, channels=2)
     swell = np.stack([periodic_lfo(n, 0.35, 152, 0.55), periodic_lfo(n, 0.35, 153, 0.55)], axis=-1)
-    high = shaped_noise(n, lambda f: band(f, 600, 3500, 1.2) * 0.12, 154, channels=2)
+    high = shaped_noise(n, lambda f: band(f, 600, 3500, 1.2), 154, channels=2) * 0.05
     x = low * swell + high * swell ** 2
     write_wav("wind_base", normalise(x, -4), loop=True)
 
@@ -329,15 +324,15 @@ def ollie():
 def landing(name, weight, seed):
     n = int((0.7 + weight * 0.6) * SR)
     sub = thump(n, 62 + 10 * (1 - weight), 34, 0.12 + 0.14 * weight, 1.0 + weight)
-    slap = noise_burst(n, 500, 4500, 0.025, seed, 0.0004)
-    crunch = grains(n, 2200, 0.004, seed + 1, lambda f: band(f, 400, 8000, 1.2), wrap=False)
+    slap = noise_burst(n, 400, 3000, 0.025, seed, 0.0004)
+    crunch = grains(n, 2200, 0.004, seed + 1, lambda f: band(f, 250, 4500, 1.2), wrap=False)
     crunch *= env_exp(n, 0.09 + 0.12 * weight, 0.002) / (np.std(crunch) + 1e-9)
     knock = board_knock(n, seed + 2, 170)
     rattle = np.zeros(n)
     r = rng(seed + 3)
     for i in range(int(3 + 6 * weight)):
         place(rattle, resonator(r.standard_normal(400) * env_exp(400, 0.002), r.uniform(2400, 4200), 25, 0.25), int(r.uniform(0.01, 0.12) * SR))
-    x = sub * (0.8 + weight * 0.5) + slap * 0.55 + crunch * 0.5 + knock * 0.5 + rattle * weight * 0.6
+    x = sub * (1.1 + weight * 0.7) + slap * 0.45 + crunch * 0.35 + knock * 0.45 + rattle * weight * 0.4
     write_wav(name, fade(normalise(x, -1.5 - (1 - weight) * 3)))
 
 
@@ -354,19 +349,19 @@ def crash(name, tier, seed):
     r = rng(seed)
     x = np.zeros(n)
     x += thump(n, 70, 30, 0.12 + 0.12 * tier, 1.5 + tier * 0.6) * (0.8 + 0.15 * tier)
-    x += noise_burst(n, 200, 6000, 0.05 + 0.04 * tier, seed + 1, 0.0005) * 0.7
+    x += noise_burst(n, 150, 3500, 0.05 + 0.04 * tier, seed + 1, 0.0005) * 0.6
     # Body and board tumbling through snow: a decaying series of impacts.
     hits = [3, 5, 8, 11][tier]
     for i in range(hits):
         at = int((0.08 + r.uniform(0.0, 0.85) * (i + 1) / hits) * n * 0.8)
         m = int(0.35 * SR)
         energy = (1.0 - i / hits) ** 1.5
-        hit = thump(m, r.uniform(60, 110), 35, 0.06, 1.2) * 0.6 + noise_burst(m, 250, 5000, 0.04, seed + 10 + i) * 0.5
+        hit = thump(m, r.uniform(60, 110), 35, 0.07, 1.4) * 0.8 + noise_burst(m, 200, 3500, 0.04, seed + 10 + i) * 0.4
         if r.random() < 0.5:
             hit += board_knock(m, seed + 30 + i, r.uniform(150, 240)) * 0.5
         place(x, hit * energy, at)
-    spray = grains(n, 2600, 0.004, seed + 2, lambda f: band(f, 400, 9000, 1.2), wrap=False)
-    x += spray / (np.std(spray) + 1e-9) * env_exp(n, 0.25 + 0.2 * tier, 0.003) * 0.35
+    spray = grains(n, 2600, 0.004, seed + 2, lambda f: band(f, 300, 6000, 1.2), wrap=False)
+    x += spray / (np.std(spray) + 1e-9) * env_exp(n, 0.25 + 0.2 * tier, 0.003) * 0.22
     if tier == 3:
         # Catastrophic: enormous low impact, debris and a long ground-borne rumble.
         rumble = fft_filter(r.standard_normal(n), lambda f: band(f, 20, 140, 1.6)) * env_exp(n, 1.1, 0.01)

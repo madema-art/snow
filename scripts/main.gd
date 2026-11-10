@@ -24,7 +24,12 @@ func _ready() -> void:
 	add_child(fx)
 	var audio := SnowAudio.new()
 	audio.rider = rider
+	audio.mountain = mountain
 	add_child(audio)
+	var haptics := SnowHaptics.new()
+	haptics.name = "Haptics"
+	haptics.rider = rider
+	add_child(haptics)
 	var menu := SnowPauseMenu.new()
 	menu.run = run
 	menu.controls = controls
