@@ -82,14 +82,8 @@ func go() -> void:
 			child.bindings = SnowControls.DEFAULTS.duplicate(true)
 			child.apply_bindings()
 		if child is SnowMountain:
-			for body in child.get_children():
-				if body is StaticBody3D and body.has_meta("hazard"):
-					var shape: Shape3D = body.get_child(0).shape
-					var radius := 1.0
-					if shape is CylinderShape3D: radius = shape.radius
-					elif shape is ConvexPolygonShape3D:
-						for p in shape.points: radius = maxf(radius, Vector2(p.x,p.z).length())
-					obstacles.append(Vector3(body.position.x,body.position.z,radius))
+			for h in child.all_hazards():
+				obstacles.append(Vector3(h.x, h.z, h.w))
 	run.records_path = "user://test_massif_records.json"
 	run.records.clear()
 	rider.sound_event.connect(func(kind: String, _strength: float):

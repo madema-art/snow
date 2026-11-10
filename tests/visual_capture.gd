@@ -23,6 +23,8 @@ const SHOTS := {
 	"rider_carve": [-120.0, 900.0, 0.0, -0.9, 0.12],
 	"nitro": [-80.0, 6700.0, 0.0, -0.5, 0.05],
 	"pause": [0.0, 30.0, 0.0, 0.0, 0.0],
+	"ride_carve": [],
+	"ride_nitro": [],
 }
 var game: Node3D
 var rider: SnowRider
@@ -47,7 +49,47 @@ func go() -> void:
 	OS.delay_msec(100)
 	quit()
 
+## Real riding: ordinary push-off and steering inputs, rendering paused while the
+## simulation runs so software GL stays fast, then frames are rendered live.
+func ride(name: String) -> void:
+	rider.reset()
+	camera.reset()
+	var run := rider.run
+	Input.action_press("jump")
+	await physics_frame
+	await physics_frame
+	Input.action_release("jump")
+	RenderingServer.render_loop_enabled = false
+	var target_x := -150.0
+	for i in 60 * 22:
+		var desired := atan2(target_x - rider.position.x, 60.0)
+		var steer := clampf(-(desired - rider.heading) * 2.5, -1, 1)
+		Input.action_press("steer_right", maxf(steer, 0))
+		Input.action_press("steer_left", maxf(-steer, 0))
+		Input.action_press("tuck", 1.0)
+		await physics_frame
+	RenderingServer.render_loop_enabled = true
+	Input.action_release("tuck")
+	if name == "ride_nitro":
+		rider.nitro = 1.0 # VISUAL FIXTURE ONLY: never done in navigation proofs.
+		Input.action_press("boost")
+	for i in 40:
+		var carve := 0.85 if name == "ride_carve" else 0.0
+		Input.action_press("steer_right", carve)
+		Input.action_release("steer_left")
+		await physics_frame
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://work/shots/%s.png" % name)
+	print("SHOT ", name, " speed=", rider.speed, " state=", run.state, " p=", rider.position)
+	for a in ["boost", "steer_right", "steer_left", "tuck"]:
+		Input.action_release(a)
+	run.restart()
+
 func shot(name: String, s: Array) -> void:
+	if name.begins_with("ride"):
+		await ride(name)
+		return
 	var x: float = s[0]
 	var z: float = s[1] * SnowMountain.DISTANCE_SCALE
 	rider.reset()
