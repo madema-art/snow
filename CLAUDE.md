@@ -27,3 +27,6 @@ Run the commands in docs/QA.md: engine import/parser, core integration suite, st
 Keep BUILD_STATUS.md accurate. Physical Xbox feel/reconnects/haptics, manual alternate-route/jump-shortcut fairness, high-speed collision/camera edge cases, actual audio listening and sustained full-run 4K profiling remain manual priorities. Art, animation and audio are procedural placeholders; no ragdoll, tracks or snow deformation. Fixed seeds/60 Hz do not guarantee bit-identical cross-hardware contact physics. No Git repository was initialized; do not claim a commit. The pre-pass scripts/tests are backed up under ignored work/pass1_backup; never run the old starter as another project.
 
 
+
+## Soundtrack location 
+All game-ready music belongs in res://assets/music/. Use the existing Music audio bus. Original WAV masters are stored separately. The game must work without music files. 
