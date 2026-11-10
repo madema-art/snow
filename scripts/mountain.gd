@@ -23,6 +23,7 @@ var outcrop_count := 0
 ## cheap neighbourhood queries (audio whooshes, tests, AO baking).
 var hazard_buckets: Dictionary = {}
 var tree_buckets: Dictionary = {}
+var pending_rocks: Dictionary = {}   # chunk start -> [transforms per variant, custom per variant]
 var atmosphere: SnowAtmosphere
 
 static func band(v: float, lo: float, hi: float, feather: float) -> float:
@@ -351,11 +352,8 @@ func make_scenery(start: float) -> void:
 		cs.assign(tree_custom[v])
 		batch(tree_variants[v][0], xs, cs, tree_material, 0.0, TREE_NEAR_RANGE)
 		batch(tree_variants[v][1], xs, cs, tree_material, TREE_NEAR_RANGE, TREE_FAR_RANGE, false)
-		var rx: Array[Transform3D] = []
-		rx.assign(rocks[v])
-		var rc: Array[Color] = []
-		rc.assign(rock_custom[v])
-		batch(rock_variants[v][0], rx, rc, rock_material, 0.0, ROCK_RANGE)
+	# Boulders share batches with this chunk's cliff outcrops (fewer draw calls).
+	pending_rocks[start] = [rocks, rock_custom]
 
 ## One faceted rock: identical vertices for the visual instance and the convex hull.
 func add_rock(stones: StaticBody3D, rocks: Array, custom: Array, variant: int, rotation_basis: Basis, scale_vec: Vector3, at: Vector3, looks: RandomNumberGenerator) -> void:
@@ -384,8 +382,8 @@ func make_outcrops(start: float) -> void:
 	stones.name = "Outcrops%d" % int(start)
 	stones.collision_layer = 2
 	stones.set_meta("hazard", "rock")
-	var rocks: Array = [[], [], [], []]
-	var custom: Array = [[], [], [], []]
+	var rocks: Array = pending_rocks[start][0]
+	var custom: Array = pending_rocks[start][1]
 	for i in 160:
 		var x := rng.randf_range(-590, 590)
 		var z := rng.randf_range(start, start + CHUNK)
@@ -410,6 +408,7 @@ func make_outcrops(start: float) -> void:
 		var rc: Array[Color] = []
 		rc.assign(custom[v])
 		batch(rock_variants[v][0], rx, rc, rock_material, 0.0, ROCK_RANGE)
+	pending_rocks.erase(start)
 
 func material(color: Color, rough := 0.9) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()

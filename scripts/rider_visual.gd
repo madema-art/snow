@@ -313,7 +313,11 @@ func update_pose(delta: float, target: Basis, on_ground: bool) -> void:
 		target_lean = clampf(-atan2(r.speed * r.yaw_rate, SnowTuning.GRAVITY) * 0.9, -0.95, 0.95)
 		target_lean -= r.brake_input * 0.22 * clampf(r.speed / 10.0, 0.0, 1.0)
 	lean = lerpf(lean, target_lean, 1.0 - exp(-9.0 * delta))
-	lean_pivot.rotation = Vector3(0, 0, lean)
+	# Board chatter on hard, icy snow at speed (tiny, visual only).
+	var chatter := 0.0
+	if on_ground and r.run.state == "running":
+		chatter = r.surface.y * clampf((r.speed - 12.0) / 25.0, 0.0, 1.0) * 0.018 * (sin(time * 61.0) + 0.6 * sin(time * 97.0))
+	lean_pivot.rotation = Vector3(chatter, 0, lean)
 	# Crouch: athletic stance, tuck, ollie preload, pop extension and landing absorb.
 	var target_crouch := 0.35
 	if r.run.state == "ready":
@@ -374,7 +378,10 @@ func pose(delta: float) -> void:
 		place_segment("knee_" + leg, knee - (knee - hip).normalized() * 0.05, knee + (ankle - knee).normalized() * 0.05)
 	place_segment("pelvis", pelvis + shoulder_axis * 0.12, pelvis - shoulder_axis * 0.12)
 	place_segment("torso", pelvis + spine_up * 0.12, chest + spine_up * 0.02)
-	place_segment("jacket_hem", pelvis + spine_up * 0.02, pelvis + spine_up * 0.22)
+	# Jacket hem flutters in the airstream as speed builds.
+	var wind := 0.0 if r == null else clampf(r.speed / 35.0, 0.0, 1.3)
+	var flap := (sin(time * 23.0) * 0.6 + sin(time * 37.0) * 0.4) * 0.03 * wind
+	place_segment("jacket_hem", pelvis + spine_up * 0.02 + shoulder_axis * flap, pelvis + spine_up * 0.22 - facing * flap * 0.5)
 	place_segment("collar", neck - spine_up * 0.06, neck + spine_up * 0.04)
 	var pack: MeshInstance3D = parts["pack"]
 	pack.transform = Transform3D(spine_basis, chest - spine_up * 0.12 - facing * 0.2)
