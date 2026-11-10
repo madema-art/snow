@@ -51,6 +51,25 @@ static func height_at(x: float, distance: float) -> float:
 static func normal_at(x: float, z: float) -> Vector3:
 	return Vector3(height_at(x - 1, z) - height_at(x + 1, z), 2, height_at(x, z - 1) - height_at(x, z + 1)).normalized()
 
+## Snow surface character under the board: x = soft powder, y = wind-scoured ice.
+## Powder collects in sheltered forest and gully bottoms; ice forms on exposed,
+## steep, convex ground. The terrain shader paints the same values (vertex colour),
+## so what the rider SEES is what the board FEELS and HEARS.
+static func surface_at(x: float, distance: float) -> Vector2:
+	var h := height_at(x, distance)
+	var curvature := h - 0.25 * (height_at(x - 12, distance) + height_at(x + 12, distance) + height_at(x, distance - 12) + height_at(x, distance + 12))
+	return surface_from(x, distance, normal_at(x, distance).y, curvature)
+
+static func surface_from(x: float, distance: float, normal_y: float, curvature: float) -> Vector2:
+	var z := distance / DISTANCE_SCALE
+	var patch := 0.5 + 0.5 * sin(x / 53.0 + sin(z / 71.0) * 2.0) * sin(z / 97.0 + x / 140.0)
+	var forest := band(z, 2800, 4700, 250)
+	var exposed := 1.0 - forest
+	var steep := 1.0 - normal_y
+	var ice := clampf(smoothstep(0.07, 0.24, steep) * 0.65 + smoothstep(0.35, 2.2, curvature) * 0.7 + (patch - 0.62) * 1.3 * exposed, 0.0, 1.0)
+	var powder := clampf(forest * 0.55 + smoothstep(0.35, 2.2, -curvature) * 0.65 + (0.42 - patch) * 0.9, 0.0, 1.0) * (1.0 - ice)
+	return Vector2(powder, ice)
+
 static func region(distance: float) -> String:
 	var z := distance / DISTANCE_SCALE
 	if z < 1100: return "Summit"
