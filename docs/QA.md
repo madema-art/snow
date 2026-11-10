@@ -1,68 +1,92 @@
-# QA and reproducible validation — Massif v2
+# QA and reproducible validation — pass 3
 
-Engine: `D:\godot\Godot_v4.7.2-stable_win64.exe` (4.7.2.stable.official.ed1daf0bf). Sole root D:\Snow. Commands below are PowerShell; keep logs in ignored `D:\Snow\work`. Check ERROR/SCRIPT ERROR/WARNING text as well as exit codes: Godot can return 0 on parse errors.
+Godot can exit 0 after a script error: always grep logs for `SCRIPT ERROR` / `ERROR` and `FAIL`. Keep logs and renders in the git-ignored `work/` folder. All persistence fixtures use disposable `user://test_*.json` files and delete them.
 
-## Engine import/parser
+## Engine
 
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --headless --path 'D:\Snow' --editor --import --quit 2>&1 | Tee-Object 'D:\Snow\work\pass2_import.log'
+- Windows: `D:\godot\Godot_v4.7.2-stable_win64.exe` (4.7.2.stable.official.ed1daf0bf). Replace `godot` below with that path and run from `D:\Snow` (PowerShell: `& 'D:\godot\...exe' ...`).
+- Linux/cloud: official `Godot_v4.7.2-stable_linux.x86_64` from the GitHub release (same commit hash), checksum-verified with the release `SHA512-SUMS.txt`. Software rendering for screenshots: `xvfb-run` + Mesa llvmpipe (OpenGL 4.5). Audio runs on the dummy driver (no device) unless Movie Maker is used.
+
+## 1. Import / parse (also registers global classes and imports audio)
+
+```bash
+godot --headless --path . --editor --import --quit
 ```
 
-## Core rules / camera input / persistence
+Run after pulling or after regenerating audio. Expect no `ERROR`.
 
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --headless --path 'D:\Snow' --fixed-fps 60 --script res://tests/prototype_test.gd 2>&1 | Tee-Object 'D:\Snow\work\pass2_core.log'
+## 2. Core rules / input / persistence
+
+```bash
+godot --headless --path . --fixed-fps 60 --script res://tests/prototype_test.gd
 ```
 
-Tests actual scene/physics, stationary clock, push-off, ollie, real airborne RS independence and camera response, deadzone drift rejection, midair pause, clean landed charge, variable boost, harder trick reward, bad landing, complete charge/momentum/glow wipe, running recovery time, reserved bindings, conflict swapping and persistence, malformed save values, legacy action migration, fixed Menu/capture/D-pad focus/accept behavior, sorted top ten, hundredths, restart, brake/carve direction, severity duration, actual direct fatal/moderate tree collisions, safe get-up and real 100 m physical fall. Persistence fixtures use separate test_*.json paths and clean up. Production records/remaps are never overwritten by the tests.
+4K/VSync config, buses, RS deadzone, stationary start, push-off, ollie, airborne RS independence, midair pause, clean landing charge, partial boost, trick vs plain reward, bad landing, full wipe on crash, board darkening, recovery time, remap/conflict/persist/migration, fixed Menu/A/D-pad navigation, top ten, hundredths, restart, brake, carve direction, severity, real tree impacts (fatal and moderate), get-up, real 100 m fall. Expect `TESTS COMPLETE: 0 failures`.
 
-## Terrain contact and optional jump fixture
+## 3. Pass-3 feel systems
 
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --headless --path 'D:\Snow' --fixed-fps 60 --script res://tests/terrain_test.gd 2>&1 | Tee-Object 'D:\Snow\work\terrain_test.log'
+```bash
+godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 ```
 
-This explicitly positions a LOCAL collision fixture near the narrow gorge spur at X=120, with 40 m/s approach speed. It checks that innocuous mesh seams do not discard speed, then presses ordinary jump input and verifies clearing the actual gap, clean landing and earned stored nitro. This local placement is not the full-course traversability proof.
+Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
-## Whole course: straight versus controlled (A/B/C/D)
+## 4. Local terrain / shortcut fixtures
 
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --headless --path 'D:\Snow' --fixed-fps 60 --script res://tests/mountain_test.gd 2>&1 | Tee-Object 'D:\Snow\work\mountain_test.log'
+```bash
+godot --headless --path . --fixed-fps 60 --script res://tests/terrain_test.gd
 ```
 
-The camera checks prove unlimited horizontal orbit, pitch endpoints, movement independence, inactivity hold, smooth recenter and retraction in front of an actual added solid obstruction. The fixture is removed before descent.
+Seam momentum at 40 m/s; gorge spur ollie (X=120) clears and lands with nitro; Broken Mountain pinch gap (X=170) clears with an ordinary ollie at ~30 m/s and lands cleanly with nitro. The rider is PLACED near each feature: these are local fixtures, not the full-course proof.
 
-Test A pushes off with no steering/brake/tuck. It uses actual collisions, can recover naturally after falls, and must not finish easily; it meets rocks then a real gorge drop. The log reports every impact and final state/time/position. Test B restarts at the normal summit and uses only ordinary steering/brake/tuck actions, route knowledge and local obstacle avoidance on the real rider. It never writes position, velocity, heading, nitro or time after push-off; it never clears course hazards or delays finish. Built-in collision recovery still performs the same small local reposition as human gameplay. Test C measures the untouched actual fixed-step run clock, accumulated 3D distance, peak speed and falls. Final assertions require completion around the five-minute target, real distance/speed and record-once/time-freeze behavior. Test-only route waypoints are not in-game checkpoints.
+## 5. Whole course (ordinary inputs only)
 
-The reference bot knows the landscape and all nearby collider positions; this is repeatable skilled route knowledge, not a human usability/playtest result. Successful bot runs may still crash. Frame-step simulation time is not wall-clock duration. Cross-hardware bit-identical contact physics is not guaranteed.
-
-Optional cautious input profile, SAME course/physics/clock, lower selected speed through ordinary brake/tuck choices:
-
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --headless --path 'D:\Snow' --fixed-fps 60 --script res://tests/mountain_test.gd -- --cautious 2>&1 | Tee-Object 'D:\Snow\work\mountain_cautious.log'
+```bash
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --cautious
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --tricks
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --camera-only
 ```
 
-Run the two profiles sequentially because they share a disposable test record filename. This comparison does not measure actual beginner/expert human populations. Tests allow 100 ms real time at exit for audio mixer cleanup after accelerated stepping.
+Each run first does camera checks, then **A: straight** (push-off, no steering; must not finish — meets rocks then a fatal gorge), then **B/C: controlled** (route knowledge + local hazard avoidance; only steer/brake/tuck — plus ollie/spin/grab/boost in `--tricks`; it may read state to decide but never writes position, velocity, heading, nitro or time). Reports time, 3D distance, peak speed, falls, and for `--tricks` the rewarded landings, nitro earned and boost seconds. Run profiles sequentially (shared disposable records file). Bot results are traversability evidence, not human difficulty.
 
-## Rendered view / explicit 4K GPU probes
+## 6. Visual captures (software GL is fine)
 
-```powershell
-& 'D:\godot\Godot_v4.7.2-stable_win64.exe' --path 'D:\Snow' --windowed --resolution 1280x720 --script res://tests/massif_capture.gd 2>&1 | Tee-Object 'D:\Snow\work\pass2_render.log'
+```bash
+xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --rendering-driver opengl3 --script res://tests/visual_capture.gd
 ```
 
-Captures all five regions, gorge look, look-behind and pause/remaps in work/pass2_*.png. Snapshot positioning is a VISUAL fixture, separate from full-run proof. The benchmark creates an explicit 3840x2160 SubViewport with 2x MSAA sharing the actual world and camera, samples native per-viewport GPU timing across 120 frames after warmup, and prints CPU frame average/p95 and GPU median/p95. VSync and render cap are disabled only inside this test process; shipped settings stay fullscreen/VSync/60. Total reported draw calls include both the small root window and the explicit 4K view; do not misreport those as single-view calls. Old tests/capture.gd delegates to this updated script.
+Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
 
-These are short stationary regional render probes, not sustained whole-course moving performance or hardware controller certification. They provide a real 4K rendering target without needing a 4K monitor. Do not compare an uncapped GPU sample directly against the earlier paced 16.45 ms stationary screenshot sample.
+## 7. Real ride recording (video + the game's actual audio mix)
 
-## Essential physical/manual tests still required
+```bash
+xvfb-run -a -s "-screen 0 960x540x24" godot --path . --windowed --resolution 960x540 --fixed-fps 60 --rendering-driver opengl3 --write-movie work/movie/ride.avi --script res://tests/movie_ride.gd
+ffmpeg -i work/movie/ride.avi -vn work/movie/ride.wav
+```
 
-- Xbox hardware: LS steering direction/feel/inertia, triggers, full RS look-behind while riding/in air, diagonal deadzone, inactive settle and smooth recenter; haptics and reconnects. Remap all non-reserved actions, save/relaunch, cancel capture and preserve fixed D-pad/LS/A/B/Menu UI navigation.
-- Human route learning: initial route readability, several ways around each gorge/buttress, low-speed tree avoidance, preserving speed across ridges, safely braking/traversing, all optional jump/chute lines. Compare beginner/learned/expert completion distributions; tune geography without flattening challenge or slowing the board.
-- High-speed collision fairness at tree edges, actual rock facets, cliff lips, coarse 8 m terrain cells and uneven landing surfaces. Check low-energy brushes versus tumbling, large drops/direct impacts versus fatality, full nitro/momentum/glow wipe and safe local get-up placement. Time continues through recovery.
-- Camera: dense trees/rocks, steep terrain, extreme pitch, full orbit and look-behind at speed; ensure no clipping or abrupt direction changes. Input must never alter rider/tricks. Pause midair freezes camera, audio, simulation and clock.
-- Tricks and nitro: clean/misaligned spins/flips, grab reward, board-only charge, partial bursts, depletion/empty sputter and no steering gain. Finish through orange valley gate, record once, persist top ten; instant restart from every state. Absolutely no active HUD or music.
-- Listen on headphones/speakers: regional exposure/forest shelter, scrape/edge/wind balance, loop seams, impacts, boost and sputter distinction. No audio listening session is implied by code validation.
-- Sustained actual 3840x2160 fullscreen 60 Hz gameplay profiling: frame-time tails, forest/boost/landings/free orbit, startup generation and native physics budget. Short offscreen GPU probes do not certify a full session at stable 60 FPS.
+Scripted ~32 s ride: summit ambience, push-off, tuck, three trick jumps (180, 180+grab), hard carves, nitro, empty sputter, brake, and a crash into ONE fixture tree with tumble and get-up. Movie Maker renders deterministically and records the real bus output, so levels, peaks and spectra can be analysed without an audio device. It is not a listening test.
 
+## 7b. Soundtrack through the real mixer
 
-Focused camera regression without repeating the full descent: run the mountain_test.gd command with `-- --camera-only`. This covers the latest active-input-over-recenter priority along with yaw/pitch/hold/recenter/solid obstruction checks.
+```bash
+xvfb-run -a -s "-screen 0 320x180x24" godot --path . --windowed --resolution 320x180 --fixed-fps 60 --rendering-driver opengl3 --write-movie work/movie/music.avi --script res://tests/movie_music.gd
+ffmpeg -i work/movie/music.avi -vn work/movie/music.wav && python3 tools/analyze_mix.py work/movie/music.wav
+```
+
+Expect the opener at launch, silence while paused (4–7 s), resume at the same position, then a crossfade.
+
+## 8. Render cost / 4K probe
+
+```bash
+xvfb-run -a -s "-screen 0 3840x2160x24" godot --path . --resolution 3840x2160 --rendering-driver opengl3 --script res://tests/perf_probe.gd
+```
+
+Prints startup generation time and per-region draw calls, primitives and objects for the real chase view at 4K. Counts are hardware-independent; on Windows with the RTX GPU, run without xvfb (and use `tests/massif_capture.gd` for per-viewport GPU timing on an explicit 3840x2160 SubViewport). Frame times from software GL are meaningless and must not be reported as performance.
+
+## Manual tests still required on the target PC
+
+- **Xbox controller:** LS carve feel at 20/60/120 km/h, edge engagement, brake skid, tuck, A preload/release timing, coyote at lips, LB/RB/D-pad/X air tricks, RS free look at speed and in the air (look behind while riding forward), idle settle, RS-click recenter, haptics (snow texture, landings, crash tiers, nitro, empty sputter), disconnect → pause → reconnect → resume, remap every action, persistence across relaunch, menu navigation with D-pad/LS/A/B/Menu.
+- **Listening (headphones and speakers):** surface transitions, air→landing transition, wind build-up and forest shelter, nitro ignite/sustain/deplete identity, empty sputter recognisability, crash weight, limiter behaviour, overall loudness.
+- **4K/60:** sustained fullscreen runs through every region (forest especially), boosting, crashes, free orbit in dense trees; frame-time tails and startup time on the RTX 2070 SUPER.
+- **Human routes:** first-time readability of the gorge/buttress/escarpment/cuts, both gorge ends, spur and pinch-gap shortcuts, summit rollers, final tabletop, recovery after poor lines, finish recognisability; beginner vs learned vs expert times.

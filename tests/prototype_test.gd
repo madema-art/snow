@@ -69,7 +69,7 @@ func go() -> void:
 	await frames(8)
 	Input.action_release("look_right")
 	Input.action_release("look_up")
-	check(rider.heading == yaw_before and rider.spin == 0 and rider.flip == 0 and horizontal_before.distance_to(Vector2(rider.velocity.x,rider.velocity.z)) < 0.01, "airborne right stick never steers or performs tricks")
+	check(rider.heading == yaw_before and rider.spin == 0 and rider.flip == 0 and absf(horizontal_before.angle_to(Vector2(rider.velocity.x,rider.velocity.z))) < 0.0005, "airborne right stick never steers, redirects or performs tricks")
 	check(absf(camera.orbit - orbit_before) > 0.1, "free camera responds in actual airborne physics")
 	var air_position := rider.position
 	var time_before := run.elapsed

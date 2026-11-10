@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b7j6bn84fu4kn"
+path="res://.godot/imported/Alpine Shift (Take 2).mp3-dc3fb2b9dc9befedc05742b4797051ad.mp3str"
+
+[deps]
+
+source_file="res://assets/music/Alpine Shift (Take 2).mp3"
+dest_files=["res://.godot/imported/Alpine Shift (Take 2).mp3-dc3fb2b9dc9befedc05742b4797051ad.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

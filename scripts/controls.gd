@@ -132,7 +132,13 @@ func apply_bindings() -> void:
 func describe(action: String) -> String:
 	var b: Array = bindings[action]
 	if b[0] == "axis":
-		return {2: "RS horizontal", 3: "RS vertical", 4: "LT", 5: "RT"}.get(int(b[1]), "Axis") + (" -" if b[2] < 0 else " +")
+		var negative: bool = b[2] < 0
+		match int(b[1]):
+			JOY_AXIS_RIGHT_X: return "RS left" if negative else "RS right"
+			JOY_AXIS_RIGHT_Y: return "RS up" if negative else "RS down"
+			JOY_AXIS_TRIGGER_LEFT: return "LT"
+			JOY_AXIS_TRIGGER_RIGHT: return "RT"
+		return "Axis"
 	return {0: "A", 1: "B", 2: "X", 3: "Y", 4: "View", 7: "LS click", 8: "RS click", 9: "LB", 10: "RB", 11: "D-pad up", 12: "D-pad down", 13: "D-pad left", 14: "D-pad right"}.get(int(b[1]), "Button")
 
 func save_settings() -> void:

@@ -5,7 +5,9 @@ func _ready() -> void:
 	add_child(controls)
 	var run := SnowRun.new()
 	add_child(run)
-	add_child(SnowMountain.new())
+	var mountain := SnowMountain.new()
+	mountain.name = "Mountain"
+	add_child(mountain)
 	var rider := SnowRider.new()
 	rider.name = "Rider"
 	rider.run = run
@@ -15,12 +17,27 @@ func _ready() -> void:
 	camera.rider = rider
 	add_child(camera)
 	rider.reset_performed.connect(camera.reset)
+	var fx := SnowFX.new()
+	fx.name = "SnowFX"
+	fx.rider = rider
+	fx.mountain = mountain
+	add_child(fx)
 	var audio := SnowAudio.new()
 	audio.rider = rider
+	audio.mountain = mountain
 	add_child(audio)
+	var haptics := SnowHaptics.new()
+	haptics.name = "Haptics"
+	haptics.rider = rider
+	add_child(haptics)
+	var music := SnowMusic.new()
+	music.name = "Music"
+	music.rider = rider
+	add_child(music)
 	var menu := SnowPauseMenu.new()
 	menu.run = run
 	menu.controls = controls
 	menu.rider = rider
 	menu.camera = camera
+	menu.music = music
 	add_child(menu)

@@ -6,6 +6,7 @@ var elapsed := 0.0
 var state := "ready"
 var records: Array = []
 var records_path := "user://snow_records_massif_v2.json"
+var last_rank := -1 # Index in the top ten of the latest finish, or -1.
 
 func _ready() -> void:
 	load_records()
@@ -20,15 +21,18 @@ func tick(delta: float) -> void:
 
 func restart() -> void:
 	elapsed = 0.0
+	last_rank = -1
 	state = "ready"
 
 func finish() -> void:
 	if state != "running":
 		return
 	state = "finished"
-	records.append(snappedf(elapsed, 0.001))
+	var time := snappedf(elapsed, 0.001)
+	records.append(time)
 	records.sort()
 	records = records.slice(0, 10)
+	last_rank = records.find(time)
 	save_records()
 	ended.emit()
 
