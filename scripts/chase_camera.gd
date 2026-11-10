@@ -36,8 +36,8 @@ var query := PhysicsShapeQueryParameters3D.new()
 
 func _ready() -> void:
 	current = true
-	near = 0.1
-	far = 9000
+	near = 0.15
+	far = 30000
 	sphere.radius = T.CAM_COLLISION_RADIUS
 	query.shape = sphere
 	query.collision_mask = 3

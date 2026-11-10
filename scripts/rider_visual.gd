@@ -211,7 +211,12 @@ func build_body() -> void:
 	mesh_part("gaiter", capsule(0.1, 0.2), skin)
 	var goggle := rounded_box(Vector3(0.05, 0.075, 0.2))
 	mesh_part("goggles", goggle, lens)
-	mesh_part("goggle_strap", capsule(0.137, 0.08), mat(Color("111111"), 0.7))
+	var band := CylinderMesh.new()
+	band.top_radius = 0.138
+	band.bottom_radius = 0.138
+	band.height = 0.035
+	band.radial_segments = 16
+	mesh_part("goggle_strap", band, mat(Color("111111"), 0.7))
 
 # ---------------------------------------------------------------- posing helpers
 func place_segment(key: String, a: Vector3, b: Vector3) -> void:
