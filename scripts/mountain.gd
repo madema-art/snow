@@ -51,11 +51,23 @@ static func height_at(x: float, distance: float) -> float:
 	# Broken mountain: large gullies, spines and natural launches, blending into final bowl.
 	var broken := band(z, 4750, 6370, 200)
 	h += broken * (12.0 * sin(x / 72.0 + z / 125.0) + 4.0 * sin(z / 43.0))
-	h -= 92.0 * band(x, -120, 235, 24) * band(z - 22.0*sin(x/75.0), 5440, 5520, 16)
+	# The first broken cut pinches to a narrow gap near x=170 with a kicker on its
+	# uphill lip: a visible, committing gap-jump shortcut versus the long west detour.
+	var pinch := exp(-pow((x - 170.0) / 26.0, 4.0))
+	var cut_z := z - 22.0*sin(x/75.0)
+	h -= 92.0 * band(x, -120, 235, 24) * lerpf(band(cut_z, 5440, 5520, 16), band(cut_z, 5472, 5490, 6), pinch)
+	h += 10.0 * smoothstep(5442.0, 5468.0, cut_z) * (1.0 - smoothstep(5468.0, 5478.0, cut_z)) * exp(-pow((x - 170.0) / 24.0, 4.0))
+	# A raised far rim whose downslope is the natural landing for a committed jump.
+	h += 9.0 * exp(-pow((cut_z - 5493.0) / 15.0, 2.0)) * exp(-pow((x - 170.0) / 40.0, 4.0))
 	h -= 85.0 * band(x, -170, 490, 25) * band(z - 18.0*sin(x/90.0), 6270, 6340, 16)
 	# These ramps are optional faster lines; a cautious rider can ride around them.
 	for ramp in [Vector2(-80, 1150), Vector2(210, 3320), Vector2(-270, 5070), Vector2(290, 5920), Vector2(0, 6970)]:
 		h += 5.0 * exp(-pow((z - ramp.y) / 22.0, 2.0)) * exp(-pow((x - ramp.x) / 36.0, 4.0))
+	# East summit: wind-drift rollers, a playful optional line where an ollie off
+	# each crest turns into real air (and the first nitro) long before any danger.
+	h += 3.0 * band(x, 70, 420, 60) * band(z, 260, 960, 80) * maxf(0.0, sin((z - 260.0) / 70.0 * TAU * 0.5)) ** 2
+	# Final bowl tabletop: a big launch for riders arriving with nitro to spend.
+	h += 6.0 * exp(-pow((z - 7190.0) / 20.0, 2.0)) * exp(-pow((x + 70.0) / 55.0, 4.0))
 	# Visible perimeter cornices plunge into real lower slopes. No fatal X threshold.
 	h -= maxf(0.0, absf(x) - 520.0) * 1.8
 	return h
@@ -116,6 +128,12 @@ func _ready() -> void:
 	make_finish()
 	add_child(SnowBackdrop.new())
 	print("MOUNTAIN ", COURSE_ID, " length=", LENGTH, " width=", WIDTH, " trees=", tree_count, " rocks=", rock_count, " outcrops=", outcrop_count)
+
+## Approach and landing of the Broken Mountain pinch gap stay clear of scenery so
+## the shortcut is readable and fair (the gap itself is the danger).
+static func gap_line(x: float, z: float) -> bool:
+	var logical := z / DISTANCE_SCALE
+	return absf(x - 170.0) < 34.0 and logical > 5360.0 and logical < 5600.0
 
 static func bucket(z: float) -> int:
 	return int(floor(z / CHUNK))
@@ -275,6 +293,7 @@ func make_scenery(start: float) -> void:
 		var z := rng.randf_range(start, start + 200)
 		var x := rng.randf_range(-495, 495)
 		if absf(x-120) < 25 and z > 1430*DISTANCE_SCALE and z < 1600*DISTANCE_SCALE: continue
+		if gap_line(x, z): continue
 		var lane_a := -180.0 + 95.0 * sin((z / DISTANCE_SCALE - 2800) / 300.0)
 		var lane_b := 260.0 + 65.0 * sin(z / DISTANCE_SCALE / 180.0)
 		# Two winding forest corridors. Neither is a straight central protected lane.
@@ -313,6 +332,7 @@ func make_scenery(start: float) -> void:
 		var z := rng.randf_range(start, start + 200)
 		var x := rng.randf_range(-490, 490)
 		if absf(x-120) < 40 and z > 1430*DISTANCE_SCALE and z < 1600*DISTANCE_SCALE: continue
+		if gap_line(x, z): continue
 		if normal_at(x, z).y < 0.75 or z < 180 or z > FINISH - 120: continue
 		var s := rng.randf_range(1.3, 4.0)
 		if geo_start > 1100 and geo_start < 2800: s *= 2.5

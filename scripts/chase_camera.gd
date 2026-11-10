@@ -99,7 +99,7 @@ func orbit_input(delta: float, stick: Vector2, recenter: bool) -> void:
 	var waiting := rider != null and rider.run != null and rider.run.state == "ready"
 	var settling := idle > IDLE_DELAY and not waiting
 	if magnitude <= 0.001 and (recentering or settling):
-		var gain := T.CAM_RECENTER_RATE if recentering else T.CAM_SETTLE_RATE * smoothstep(IDLE_DELAY, IDLE_DELAY + 1.5, idle)
+		var gain := T.CAM_RECENTER_RATE if recentering else T.CAM_SETTLE_RATE * smoothstep(IDLE_DELAY, IDLE_DELAY + 1.0, idle)
 		var w := 1.0 - exp(-gain * delta)
 		look_yaw = lerp_angle(wrapf(look_yaw, -PI, PI), 0.0, w)
 		lift = lerpf(lift, auto_lift(), 1.0 - exp(-gain * (1.0 if recentering else 2.5) * delta))

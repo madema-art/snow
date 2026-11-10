@@ -104,7 +104,7 @@ func go() -> void:
 	check(camera.orbit == held_yaw,"manual orbit holds its view during inactivity grace period")
 	camera.orbit_input(1.0/60,Vector2.ZERO,true)
 	for i in 120: camera.orbit_input(1.0/60,Vector2.ZERO,false)
-	check(absf(wrapf(camera.orbit-rider.heading,-PI,PI)) < 0.02 and absf(camera.lift-0.32)<0.02,"smooth explicit recenter")
+	check(absf(wrapf(camera.orbit-rider.heading,-PI,PI)) < 0.02 and absf(camera.lift-camera.auto_lift())<0.02,"smooth explicit recenter")
 	var obstruction := StaticBody3D.new()
 	obstruction.collision_layer = 2
 	obstruction.position = rider.position + Vector3(0,2,-5)

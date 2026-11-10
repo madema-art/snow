@@ -507,6 +507,7 @@ func _physics_process(delta: float) -> void:
 	var before := velocity
 	move_and_slide()
 	var snow_contacts_only := true
+	var brush_normal := Vector3.ZERO
 	for i in get_slide_collision_count():
 		var hit := get_slide_collision(i)
 		var object := hit.get_collider()
@@ -514,6 +515,7 @@ func _physics_process(delta: float) -> void:
 			snow_contacts_only = false
 			var impact := maxf(0.0, -before.dot(hit.get_normal()))
 			if impact < T.BRUSH_IMPACT:
+				brush_normal = hit.get_normal()
 				continue
 			var kind := str(object.get_meta("hazard"))
 			last_crash_reason = kind
@@ -531,6 +533,14 @@ func _physics_process(delta: float) -> void:
 			return
 		elif hit.get_normal().y < 0.55 and SnowMountain.normal_at(hit.get_position().x, hit.get_position().z).y < 0.65:
 			snow_contacts_only = false
+	# Leaning on a trunk or boulder at walking pace: the rider shuffles around it in
+	# the direction the board points instead of staying pinned by gravity.
+	if brush_normal != Vector3.ZERO and is_on_floor() and Vector2(velocity.x, velocity.z).length() < 3.0:
+		var flat_normal := Vector3(brush_normal.x, 0, brush_normal.z).normalized()
+		var around := forward().slide(flat_normal)
+		if around.length() < 0.2:
+			around = flat_normal.cross(Vector3.UP) * (1.0 if steer >= 0.0 else -1.0)
+		velocity += (around.normalized() * 3.5 + flat_normal * 1.0) * delta
 	# Preserve tangent momentum across internal snow triangle seams. CharacterBody's
 	# repeated contact resolution can otherwise discard almost all horizontal speed
 	# on an innocuous 8 m mesh edge. Never restore through a solid hazard or wall.

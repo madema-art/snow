@@ -9,7 +9,7 @@ const GRAVITY := 20.0
 const DRAG := 0.0075               # Quadratic air drag coefficient. NO maximum speed cap.
 const TUCK_DRAG_REDUCTION := 0.58  # Full RT tuck removes 58% of air drag.
 const ROLLING_RESISTANCE := 0.4    # m/s^2 base snow friction.
-const AIR_DRAG_SCALE := 0.8        # Airborne drag relative to riding drag.
+const AIR_DRAG_SCALE := 0.35       # Air-only drag in flight (snow friction is gone).
 
 # --- Carving ---
 const STEER_CURVE := 1.3           # Analog response exponent: fine control near centre.
@@ -94,7 +94,7 @@ const CAM_INPUT_SMOOTH := 16.0     # Angular velocity smoothing for analog feel.
 const CAM_PITCH_MIN := -0.35
 const CAM_PITCH_MAX := 1.25
 const CAM_IDLE_DELAY := 3.0
-const CAM_SETTLE_RATE := 0.9
+const CAM_SETTLE_RATE := 1.4
 const CAM_RECENTER_RATE := 5.0
 const CAM_DISTANCE_MIN := 5.8
 const CAM_DISTANCE_MAX := 8.6
