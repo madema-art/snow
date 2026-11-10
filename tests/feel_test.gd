@@ -68,6 +68,11 @@ func go() -> void:
 	var different := rider.trick_reward(1.2, 3.0, 0, 0, 0.6, 1.0)
 	check(second < first * 0.6 and third < second and different > third, "repeating one trick fatigues it; a different trick does not")
 	rider.fatigue.clear()
+	var spam := 0.0
+	for i in 20:
+		spam += rider.trick_reward(1.0, 2.0, 1 + i % 2, 0, 0.5 * (i % 3), 1.0)
+	check(spam < 1.2, "twenty rapid back-to-back tricks cannot fill the board more than about once (%.2f)" % spam)
+	rider.fatigue.clear()
 	rider.fatigue["s2 f0 g0"] = 1.0
 	await press_and_run(0)
 	check(rider.fatigue.get("s2 f0 g0", 0.0) < 1.0, "trick fatigue recovers over riding time")

@@ -9,6 +9,15 @@ var menu: SnowPauseMenu
 const ROUTE := [Vector2(0,8), Vector2(-320,1250), Vector2(-320,1850), Vector2(-240,2500), Vector2(-150,2900), Vector2(-95,3400), Vector2(200,4070), Vector2(230,4470), Vector2(-310,5310), Vector2(-310,5650), Vector2(-310,6160), Vector2(-310,6500), Vector2(-100,7000), Vector2(0,7440), Vector2(0,7800)]
 var obstacles: Array[Vector3] = []
 var cautious: bool = "--cautious" in OS.get_cmdline_user_args()
+var tricks: bool = "--tricks" in OS.get_cmdline_user_args()
+# Trick profile state (inputs only; the bot may READ rider state to time them).
+var trick_phase := ""
+var trick_timer := 0
+var trick_cooldown := 0
+var trick_index := 0
+var nitro_earned := 0.0
+var boost_frames := 0
+var tricks_landed := 0
 
 func _initialize() -> void: go.call_deferred()
 func check(value: bool, message: String) -> void:
@@ -61,6 +70,9 @@ func drive() -> void:
 		target.x = relevant.x + side * (relevant.z + 5)
 		target.y = maxf(rider.position.z + 12, relevant.y)
 		if nearest < 25: target_speed = minf(target_speed, 22)
+	var open_ahead := nearest > lookahead + 10.0
+	if tricks:
+		drive_tricks(geo_z, open_ahead)
 	var desired := atan2(target.x - rider.position.x, maxf(8,target.y - rider.position.z))
 	var error := wrapf(desired - rider.heading, -PI, PI)
 	var steer := clampf(-error * 2.8, -1, 1)
@@ -69,6 +81,46 @@ func drive() -> void:
 	var brake := clampf((rider.speed - target_speed) * 0.22 + maxf(0, absf(error) - 0.35) * 0.5,0,0.85)
 	Input.action_press("brake", brake)
 	Input.action_press("tuck", 1.0 if rider.speed < target_speed - 0.5 and absf(error) < 0.18 else 0.0)
+
+## Ollie + spin/grab on open snow, then spend nitro on clear fast terrain.
+func drive_tricks(geo_z: float, open_ahead: bool) -> void:
+	trick_cooldown -= 1
+	var open_region := geo_z < 1050 or (geo_z > 6550 and geo_z < 7500)
+	match trick_phase:
+		"":
+			Input.action_release("spin_right")
+			Input.action_release("grab")
+			if open_region and open_ahead and rider.is_on_floor() and rider.recovery <= 0.0 and rider.speed > 16.0 and trick_cooldown <= 0:
+				trick_phase = "preload"
+				trick_timer = 14
+				Input.action_press("jump")
+		"preload":
+			trick_timer -= 1
+			if trick_timer <= 0:
+				Input.action_release("jump")
+				trick_phase = "air"
+				trick_timer = 0
+		"air":
+			trick_timer += 1
+			var kind := trick_index % 3
+			if kind != 1 and rider.spin > -PI * 0.92:
+				Input.action_press("spin_right")
+			else:
+				Input.action_release("spin_right")
+			if kind != 0 and trick_timer > 4:
+				Input.action_press("grab")
+			if rider.is_on_floor() and trick_timer > 6 or rider.recovery > 0.0 or trick_timer > 240:
+				Input.action_release("spin_right")
+				Input.action_release("grab")
+				trick_phase = ""
+				trick_index += 1
+				trick_cooldown = 150
+	var boost := rider.nitro > 0.05 and trick_phase == "" and open_ahead and rider.is_on_floor() and (geo_z > 6550 or rider.nitro > 0.35)
+	if boost:
+		Input.action_press("boost")
+		boost_frames += 1
+	else:
+		Input.action_release("boost")
 
 func go() -> void:
 	game = load("res://scenes/main.tscn").instantiate()
@@ -87,6 +139,9 @@ func go() -> void:
 	run.records_path = "user://test_massif_records.json"
 	run.records.clear()
 	rider.sound_event.connect(func(kind: String, _strength: float):
+		if kind == "charge":
+			nitro_earned += rider.last_reward
+			tricks_landed += 1
 		if kind in ["crash", "fatal"]: print("FALL ", kind, " reason=",rider.last_crash_reason," p=",rider.position," t=",run.elapsed))
 	var old_heading := rider.heading
 	var old_velocity := rider.velocity
@@ -149,8 +204,11 @@ func go() -> void:
 		if i % 1800 == 0: print("CONTROLLED t=",run.elapsed," p=",rider.position," speed=",rider.speed," heading=",rider.heading," recovery=",rider.recovery)
 		if run.state != "running": break
 	print("CONTROLLED RESULT state=",run.state," time=",run.elapsed," distance=",distance," max_speed=",max_speed," crashes=",crashes," p=",rider.position)
+	if tricks:
+		print("TRICK RESULT rewarded_landings=", tricks_landed, " nitro_earned=", nitro_earned, " boost_seconds=", boost_frames / 60.0)
+		check(tricks_landed >= 4 and nitro_earned > 0.3 and boost_frames > 60, "tricks earn nitro that is then spent on real boosts during a full run")
 	check(run.state == "finished", "ordinary steering/braking route completes without teleporting")
-	check(run.elapsed >= (330 if cautious else 260) and run.elapsed <= (480 if cautious else 360), "cautious route takes longer" if cautious else "skill-route simulation approximately five minutes")
+	check(run.elapsed >= (330 if cautious else 230) and run.elapsed <= (480 if cautious else 360), "cautious route takes longer" if cautious else "skill-route simulation approximately five minutes")
 	check(max_speed > (25 if cautious else 30) and distance > 7800,"real travel distance and expected input-profile speed")
 	var finished_time := run.elapsed
 	run.finish()

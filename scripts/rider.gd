@@ -313,8 +313,10 @@ func trick_reward(time_in_air: float, drop: float, half_spins: int, flips: int, 
 	reward *= 0.5 + 0.5 * quality
 	last_trick = "s%d f%d g%d" % [half_spins, flips, 1 if grab_time > 0.2 else 0]
 	var tired: float = fatigue.get(last_trick, 0.0)
-	reward /= 1.0 + tired
+	var recent: float = fatigue.get("_all", 0.0)
+	reward /= 1.0 + tired + recent * T.GLOBAL_FATIGUE
 	fatigue[last_trick] = tired + 1.0
+	fatigue["_all"] = recent + 1.0
 	last_reward = minf(reward, T.REWARD_CAP)
 	return last_reward
 
@@ -379,7 +381,7 @@ func _physics_process(delta: float) -> void:
 			return
 	run.tick(delta)
 	for trick in fatigue.keys():
-		fatigue[trick] = maxf(0.0, fatigue[trick] - T.FATIGUE_DECAY * delta)
+		fatigue[trick] = maxf(0.0, fatigue[trick] - (T.GLOBAL_FATIGUE_DECAY if trick == "_all" else T.FATIGUE_DECAY) * delta)
 	land_time += delta
 	pop_time += delta
 	if recovery > 0.0:
@@ -504,6 +506,9 @@ func _physics_process(delta: float) -> void:
 			sound_event.emit("boost_release", nitro)
 		boost_time = 0.0
 	visual.refresh_charge(nitro)
+	# After a pop the board leaves the slope plane even when (on steep, fast snow)
+	# its world velocity still points downward; floor snap must not glue it back.
+	floor_snap_length = 0.0 if pop_time < 0.2 else 0.85
 	var before := velocity
 	move_and_slide()
 	var snow_contacts_only := true

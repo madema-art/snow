@@ -67,7 +67,9 @@ const REWARD_GRAB_BASE := 0.04
 const REWARD_GRAB_PER_SECOND := 0.08
 const REWARD_COMBO := 0.3          # Each extra distinct element multiplies by +30%.
 const REWARD_CAP := 0.85
-const FATIGUE_DECAY := 1.0 / 12.0  # Repeating the same trick halves, thirds... its value.
+const FATIGUE_DECAY := 1.0 / 25.0  # Repeating the same trick halves, thirds... its value.
+const GLOBAL_FATIGUE := 0.45       # Any rewarded landing briefly devalues the next one...
+const GLOBAL_FATIGUE_DECAY := 1.0 / 7.0 # ...so constant hop-spam cannot farm the board.
 
 # --- Nitro ---
 const BOOST_ACCEL := 24.0
