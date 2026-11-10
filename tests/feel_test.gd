@@ -204,6 +204,30 @@ func go() -> void:
 	check(run.last_rank == 1 and run.records == [100.0, 110.0, 120.0], "finish reports its top-ten rank")
 	check(controls.describe("look_left") == "RS left" and controls.describe("brake") == "LT", "readable binding names in the menu")
 
+	# --- Owner soundtrack player -------------------------------------------
+	var music: SnowMusic = game.get_node("Music")
+	check(music.player.bus == "Music" and AudioServer.get_bus_index("Music") >= 0, "soundtrack player is routed to the Music bus")
+	music.music_dir = "user://test_music_empty/"
+	music.scan_and_play()
+	check(music.tracks.is_empty() and not music.player.playing, "no soundtrack files: the game runs silently without errors")
+	DirAccess.make_dir_recursive_absolute("user://test_music/")
+	for name in ["b_second.wav", "a_first.wav"]:
+		var f := FileAccess.open("user://test_music/" + name, FileAccess.WRITE)
+		f.store_buffer(FileAccess.get_file_as_bytes("res://audio/charge_small.wav")) # FIXTURE file, not music
+		f.close()
+	music.music_dir = "user://test_music/"
+	music.scan_and_play()
+	await process_frame
+	check(music.tracks.size() == 2 and music.tracks[0].ends_with("a_first.wav") and music.player.playing, "soundtrack files play in filename order")
+	music.player.stop()
+	music.next_track()
+	check(music.current_track().ends_with("b_second.wav"), "playlist advances to the next song")
+	music.next_track()
+	check(music.current_track().ends_with("a_first.wav"), "playlist loops back to the first song")
+	music.player.stop()
+	for name in ["b_second.wav", "a_first.wav"]:
+		DirAccess.remove_absolute("user://test_music/" + name)
+	DirAccess.remove_absolute("user://test_music/")
 	for a in ["boost", "steer_left", "steer_right", "jump"]:
 		Input.action_release(a)
 	paused = false

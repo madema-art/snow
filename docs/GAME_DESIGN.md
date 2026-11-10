@@ -35,4 +35,4 @@ Cinematic, realistic-leaning daylight: low raking sun, blue-white shadowed snow,
 
 ## Exclusions (locked)
 
-No HUD, score, minimap, prompts, health/injury, wildlife, NPCs, opponents, helicopter, intro/countdown, background music, avalanche or advanced storms, progression systems. See DECISIONS.md.
+No HUD, score, minimap, prompts, health/injury, wildlife, NPCs, opponents, helicopter, intro/countdown, generated music (only the owner's soundtrack in `assets/music/` plays), avalanche or advanced storms, progression systems. See DECISIONS.md.

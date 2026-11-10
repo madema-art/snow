@@ -1,6 +1,6 @@
 # Audio design — pass 3
 
-Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 32 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples, third-party assets or music. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
+Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 32 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples or third-party assets; the soundtrack is supplied separately by the owner. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
 
 ## Layers (scripts/snow_audio.gd)
 
@@ -38,7 +38,7 @@ Surface weights are the same `surface_at()` data the physics and terrain shader 
 
 ## Mix
 
-Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (-3 dB) glue compressor (-16 dB, 3:1). Board, MountainWind (low-pass 16 kHz → 2.3 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master, EMPTY and reserved for the player's own soundtrack. Everything pauses with the tree.
+Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (+1 dB) glue compressor (-16 dB, 3:1). Board, MountainWind (low-pass 16 kHz → 2.3 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master (-4 dB): `scripts/music.gd` plays the owner's soundtrack from `res://assets/music/` (every .ogg/.mp3/.wav in filename order, playlist loops, continues through pause and restarts); with no files it stays silent. Agents never generate or alter music. Everything else pauses with the tree.
 
 ## Haptics (scripts/haptics.gd)
 

@@ -6,7 +6,7 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 
 | File | Responsibility |
 |---|---|
-| scripts/main.gd | Composition root: controls, run, mountain, rider, camera, FX, audio, haptics, pause menu |
+| scripts/main.gd | Composition root: controls, run, mountain, rider, camera, FX, audio, haptics, music, pause menu |
 | scripts/snow_tuning.gd | **All feel constants**: gravity/drag, carve, brake/tuck, surfaces, ollie/air, landing, trick rewards and fatigue, nitro, crash thresholds/recovery, camera |
 | scripts/mountain.gd | `SnowMountain`: analytic course (`height_at`, `normal_at`, `surface_at`, `region`), indexed 200 m render+collision chunks with per-vertex surface/lip/AO data, seeded trees/boulders/outcrops in per-chunk MultiMeshes + per-chunk static bodies, hazard buckets + `hazards_near()`, finish area |
 | scripts/scenery_meshes.gd | `SnowMeshes`: tiered snow-loaded conifers (+ far LOD), faceted boulders whose vertices are also their convex colliders |
@@ -17,6 +17,7 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 | scripts/chase_camera.gd | `SnowCamera`: travel-relative free look, analog rate smoothing, idle settle/recenter, speed framing/FOV, drop anticipation, sprung anchor, landing nod, asymmetric sphere collision |
 | scripts/snow_fx.gd | `SnowFX`: edge spray, landing/crash/tumble bursts, nitro embers, bough snow, persistent board tracks (ribbon segments) |
 | scripts/snow_audio.gd | `SnowAudio`: bus graph, 10 surface/wind/nitro loops mixed from rider state, 12-voice one-shot pool with stealing, 4 positional voices (tree pass-bys, boughs), environment (exposure, forest shelter, cliff reverb) |
+| scripts/music.gd | `SnowMusic`: owner soundtrack from `res://assets/music/` on the Music bus, filename order, looping playlist, silent when empty |
 | scripts/haptics.gd | `SnowHaptics`: continuous snow rumble + event pulses (landing, crash tiers, nitro, empty sputter) on the first connected pad |
 | scripts/controls.gd | `SnowControls`: default bindings, fixed LS steering and UI events, validated remaps with conflict swap, persistence, v1 migration, readable names |
 | scripts/run_state.gd | `SnowRun`: ready/running/finished/ended, clock, top-ten persistence, last rank |
@@ -61,7 +62,7 @@ Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with sun scatter and ae
 
 ## Audio
 
-See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue compressor) ← Board, MountainWind (low-pass for forest shelter), Impacts (reverb tuned by region/enclosure) ← Nitro. Music → Master, intentionally empty.
+See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue compressor) ← Board, MountainWind (low-pass for forest shelter), Impacts (reverb tuned by region/enclosure) ← Nitro. Music → Master (owner soundtrack via SnowMusic).
 
 ## Saves and UI
 

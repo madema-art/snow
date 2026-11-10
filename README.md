@@ -67,4 +67,4 @@ Course records: `user://snow_records_massif_v2.json` (pass-3 changes keep the sa
 | [docs/BUILD_STATUS.md](docs/BUILD_STATUS.md) | What is implemented, measured results, what still needs hands-on testing |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Locked decisions |
 
-All art, animation and audio are original and procedural/synthesized in this repository (no downloaded assets). No music is included; the empty `Music` bus is reserved for the player's own soundtrack.
+All art, animation and sound effects are original and procedural/synthesized in this repository (no downloaded assets). The soundtrack is the owner's: put game-ready `.ogg`/`.mp3`/`.wav` files in `assets/music/` and they play in filename order (looping) on the `Music` bus; with no files the game is simply silent of music.

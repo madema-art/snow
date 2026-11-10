@@ -29,7 +29,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/prototype_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 ```
 
-Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names. Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
+Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack player (Music bus, silent with no files, filename order, looping playlist). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
 ## 4. Local terrain / shortcut fixtures
 

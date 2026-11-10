@@ -30,6 +30,9 @@ func _ready() -> void:
 	haptics.name = "Haptics"
 	haptics.rider = rider
 	add_child(haptics)
+	var music := SnowMusic.new()
+	music.name = "Music"
+	add_child(music)
 	var menu := SnowPauseMenu.new()
 	menu.run = run
 	menu.controls = controls

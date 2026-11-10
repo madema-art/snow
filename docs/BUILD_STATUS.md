@@ -29,7 +29,7 @@ Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It
 
 **FX** (`scripts/snow_fx.gd`): edge spray from the working edge, landing/crash/tumble bursts, nitro embers, snow falling from boughs you ride through, persistent board tracks for the whole run.
 
-**Audio** (`tools/synth_audio.py`, `audio/`, `scripts/snow_audio.gd`, `scripts/haptics.gd`): 32 original synthesized sounds; surface-aware board layers, three wind layers plus clothing, landing/crash/tumble tiers, the nitro voice (ignite → resonant build → "singing ice" sustain → deplete) and the empty sputter; positional pass-by whooshes; exposure/forest-shelter/cliff-reverb environment; limiter and glue compression; empty Music bus. Controller haptics for snow texture, landings, crash tiers, nitro and sputter.
+**Audio** (`tools/synth_audio.py`, `audio/`, `scripts/snow_audio.gd`, `scripts/haptics.gd`): 32 original synthesized sounds; surface-aware board layers, three wind layers plus clothing, landing/crash/tumble tiers, the nitro voice (ignite → resonant build → "singing ice" sustain → deplete) and the empty sputter; positional pass-by whooshes; exposure/forest-shelter/cliff-reverb environment; limiter and glue compression. **Soundtrack:** `scripts/music.gd` plays the owner's files from `res://assets/music/` (added to `main` during this pass) on the Music bus in filename order with a looping playlist, and stays silent when the folder has no audio. Controller haptics for snow texture, landings, crash tiers, nitro and sputter.
 
 **UI / controls**: restyled frosted pause/results screen (time, top ten with the new entry highlighted, readable remap names), auto-pause on controller disconnect and window focus loss, results delayed briefly after a finish/fatal crash. Same 15 remappable actions; control and record files unchanged.
 
@@ -39,7 +39,7 @@ Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It
 |---|---|
 | Import / parse | exit 0, no errors |
 | `prototype_test.gd` (core rules, input, persistence) | **40/40 passed** |
-| `feel_test.gd` (new pass-3 systems) | **32/32 passed** |
+| `feel_test.gd` (new pass-3 systems + soundtrack player) | **37/37 passed** |
 | `terrain_test.gd` (local fixtures) | **5/5 passed**: seam momentum; spur ollie clears and earns **0.18** nitro; Broken Mountain pinch gap clears with an ordinary ollie at ~30 m/s and earns **0.22** nitro |
 | `mountain_test.gd` camera checks | 8/8 passed (also `--camera-only`) |
 | A: straight push-off, no input | Rock falls, then **fatal gorge fall at 1:19.57**, Z≈1803 m — no completion |
@@ -59,18 +59,18 @@ Captured with `tests/visual_capture.gd` at 1600x900 and `tests/movie_ride.gd` (M
 
 | View | Draw calls | Primitives | Objects |
 |---|---:|---:|---:|
-| Summit | 495 | 571,860 | 495 |
-| Cliffs | 531 | 588,446 | 531 |
-| Forest | 520 | 1,188,481 | 520 |
-| Broken Mountain | 515 | 449,929 | 515 |
-| Final Descent | 440 | 494,608 | 440 |
-| Finish | 367 | 231,243 | 367 |
+| Summit | 465 | 575,682 | 465 |
+| Cliffs | 477 | 591,228 | 477 |
+| Forest | 484 | 1,197,103 | 484 |
+| Broken Mountain | 470 | 457,031 | 470 |
+| Final Descent | 426 | 498,910 | 426 |
+| Finish | 367 | 231,145 | 367 |
 
-Counts include shadow passes and were taken before boulder/outcrop batches were merged per chunk (which removes up to 4 calls per visible chunk per pass). Startup generation measured **3.4 s** on the cloud CPU (pass 2 built a lighter world). Physics process ~0.6 ms per tick. Pass 2 measured 113–177 calls per view; pass 3 trades roughly 3x the draw calls and up to ~1.2 M triangles in the forest for the new scenery and shadows. The previous GPU measurement left large headroom (≈1.5 ms at 4K), but **real 4K/60 frame times must be measured on the RTX 2070 SUPER** (QA.md §8).
+Counts include all passes (4 shadow splits + main) and were taken after merging boulder and outcrop batches per chunk (≈5–10% fewer calls than before the merge). Startup generation measured **3.2 s** on the cloud CPU (pass 2 built a lighter world). Physics process ~0.6 ms per tick. Pass 2 measured 113–177 calls per view; pass 3 trades roughly 3x the draw calls and up to ~1.2 M triangles in the forest for the new scenery and shadows. The previous GPU measurement left large headroom (≈1.5 ms at 4K), but **real 4K/60 frame times must be measured on the RTX 2070 SUPER** (QA.md §8).
 
 ## Audio measurement (not a listening test)
 
-Movie Maker capture of the real bus output during a scripted ride, analysed with `tools/analyze_mix.py`: no clipped samples, peak −5.6 dBFS before a +4 dB SFX trim (limiter at −0.8 dBFS guards peaks), quiet summit ambience (≈ −42 dB RMS), board hiss 2–8 kHz drops ≈ 8 dB within 0.1 s of leaving the snow, landings add ≈ 15 dB of sub-150 Hz energy, the empty-nitro sputter stands clearly above the riding bed. Loop seams were checked numerically. Nobody has listened to the mix yet.
+Movie Maker capture of the real bus output during a scripted 31 s ride (summit, push-off, three trick jumps, carves, nitro, empty sputter, brake, crash with tumble and get-up), analysed with `tools/analyze_mix.py`. First capture: no clipped samples, peak −5.6 dBFS, −26.8 dB RMS, so the SFX bus was raised 4 dB. Final capture: **no clipped samples, peak −1.6 dBFS, −23.0 dB RMS**; quiet summit ambience (≈ −42 dB RMS); board hiss (2–8 kHz) drops ≈ 8 dB within 0.1 s of leaving the snow; landings add ≈ 15 dB of sub-150 Hz energy; the crash, empty-nitro sputter and nitro ignition stand clearly above the riding bed. The soundtrack folder held no audio files during these captures. Loop seams were checked numerically. Nobody has listened to the mix yet.
 
 ## Requires hands-on testing on the target PC
 
