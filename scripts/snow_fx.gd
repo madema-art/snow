@@ -1,13 +1,21 @@
 class_name SnowFX
 extends Node3D
 ## World-space snow presentation driven only by rider state: carve/brake spray
-## from the working edge, powder plumes, landing and crash bursts, nitro ember
-## crystals from the board, falling snow when riding through low boughs, and
-## persistent board tracks carved into the snow for the whole run.
+## from the working edge; the deep-lean PLUME (a rooster tail of snow, hanging
+## mist and sun-glitter thrown out the side opposite the lean); landing bursts;
+## fall dispersion (an impact burst and flying clods at every bounce of a tumble,
+## thrown along the body's momentum, plus a ploughed trail while it rolls); nitro
+## ember crystals; falling snow from brushed boughs; and persistent board tracks.
 var rider: SnowRider
 var mountain: SnowMountain
 var spray: CPUParticles3D
-var burst: CPUParticles3D
+var bursts: Array[CPUParticles3D] = []
+var burst_index := 0
+var clods: CPUParticles3D
+var tumble_trail: CPUParticles3D
+var plume_core: CPUParticles3D
+var plume_mist: CPUParticles3D
+var plume_glitter: CPUParticles3D
 var embers: CPUParticles3D
 var bough: CPUParticles3D
 var track_root: Node3D
@@ -25,10 +33,42 @@ const TRACK_SEGMENTS_KEPT := 70
 func _ready() -> void:
 	spray = particles(260, 0.55, 0.16, Color(0.93, 0.95, 1.0, 0.85))
 	spray.emitting = false
-	burst = particles(180, 0.9, 0.24, Color(0.94, 0.96, 1.0, 0.9))
-	burst.one_shot = true
-	burst.explosiveness = 0.92
-	burst.emitting = false
+	for i in 3:
+		var b := particles(200, 1.0, 0.3, Color(0.78, 0.85, 0.95, 0.9))
+		b.one_shot = true
+		b.explosiveness = 0.92
+		b.emitting = false
+		bursts.append(b)
+	clods = particles(28, 1.5, 0.55, Color(0.72, 0.8, 0.92, 0.95))
+	clods.one_shot = true
+	clods.explosiveness = 0.95
+	clods.emitting = false
+	clods.gravity = Vector3(0, -15.0, 0)
+	clods.spread = 55.0
+	tumble_trail = particles(170, 0.9, 0.34, Color(0.78, 0.85, 0.95, 0.8))
+	tumble_trail.emitting = false
+	tumble_trail.spread = 60.0
+	tumble_trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	tumble_trail.emission_sphere_radius = 0.6
+	# Plume: a dense arcing core, soft mist that hangs in the air, and glitter.
+	plume_core = particles(520, 1.25, 0.42, Color(0.74, 0.82, 0.94, 0.9))
+	plume_core.emitting = false
+	plume_core.spread = 15.0
+	plume_core.gravity = Vector3(0, -9.8, 0)
+	plume_core.damping_min = 0.4
+	plume_core.damping_max = 1.2
+	plume_core.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	plume_core.emission_sphere_radius = 0.45
+	plume_mist = particles(70, 2.4, 2.6, Color(0.8, 0.86, 0.95, 0.25))
+	plume_mist.emitting = false
+	plume_mist.spread = 30.0
+	plume_mist.gravity = Vector3(0, -0.5, 0)
+	plume_mist.damping_min = 2.0
+	plume_mist.damping_max = 3.5
+	plume_glitter = particles(170, 1.1, 0.07, Color(1.0, 1.0, 1.0, 1.0), true, Color(1.0, 0.98, 0.92))
+	plume_glitter.emitting = false
+	plume_glitter.spread = 24.0
+	plume_glitter.gravity = Vector3(0, -7.0, 0)
 	embers = particles(90, 0.6, 0.07, Color(1.0, 0.62, 0.22, 1.0), true)
 	embers.emitting = false
 	bough = particles(90, 1.6, 0.2, Color(0.95, 0.96, 1.0, 0.8))
@@ -55,8 +95,11 @@ func _ready() -> void:
 	track_root.add_child(live_track)
 	rider.sound_event.connect(_on_event)
 	rider.reset_performed.connect(clear_tracks)
+	for hidden in OS.get_environment("SNOW_FX_HIDE").split(",", false):
+		var node = get(hidden)
+		if node is Node3D: node.visible = false
 
-func particles(amount: int, lifetime: float, size: float, color: Color, glow := false) -> CPUParticles3D:
+func particles(amount: int, lifetime: float, size: float, color: Color, glow := false, glow_color := Color(1.0, 0.55, 0.15)) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.amount = amount
 	p.lifetime = lifetime
@@ -67,6 +110,10 @@ func particles(amount: int, lifetime: float, size: float, color: Color, glow := 
 	p.mesh = quad
 	var mat := StandardMaterial3D.new()
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	# Keep the particle's own scale: without this, particles that have not been
+	# emitted yet (zero scale) are drawn full-size and black at the emitter, and the
+	# size-over-life curve is ignored.
+	mat.billboard_keep_scale = true
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.vertex_color_use_as_albedo = true
@@ -83,7 +130,7 @@ func particles(amount: int, lifetime: float, size: float, color: Color, glow := 
 	mat.albedo_texture = tex
 	if glow:
 		mat.emission_enabled = true
-		mat.emission = Color(1.0, 0.55, 0.15)
+		mat.emission = glow_color
 		mat.emission_energy_multiplier = 4.0
 		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	p.material_override = mat
@@ -103,28 +150,54 @@ func particles(amount: int, lifetime: float, size: float, color: Color, glow := 
 	add_child(p)
 	return p
 
+## Start/stop a continuous emitter. Starting goes through restart() so no stale or
+## uninitialised particle from a previous burst is ever drawn (seen as a black disc).
+func flow(emitter: CPUParticles3D, on: bool) -> void:
+	if on and not emitter.emitting:
+		emitter.restart()
+	emitter.emitting = on
+
 func board_point() -> Vector3:
 	return rider.global_position - rider.grounded_normal * 0.6
 
 func _on_event(kind: String, strength: float) -> void:
 	match kind:
 		"land", "land_sketchy":
-			emit_burst(board_point(), 3.0 + strength * 7.0, int(40 + strength * 140))
+			emit_burst(board_point(), Vector3.UP, 3.0 + strength * 7.0, int(40 + strength * 140))
 		"crash", "fatal":
-			emit_burst(rider.global_position, 4.0 + strength * 8.0, 180)
+			# Snow explodes along the direction the body is thrown.
+			emit_burst(rider.global_position, momentum_direction(), 5.0 + strength * 10.0, 200)
+			emit_clods(rider.global_position, 5.0 + strength * 6.0)
 		"tumble":
-			if strength > 0.35:
-				emit_burst(rider.tumble_pos, 2.0 + strength * 4.0, 60)
+			emit_burst(rider.tumble_pos, momentum_direction(), 2.5 + strength * 7.0, int(50 + strength * 150))
+			if strength > 0.45:
+				emit_clods(rider.tumble_pos, 3.0 + strength * 6.0)
 
-func emit_burst(at: Vector3, speed: float, amount: int) -> void:
+func momentum_direction() -> Vector3:
+	var flat := Vector3(rider.tumble_vel.x, 0, rider.tumble_vel.z)
+	if flat.length() < 0.5:
+		return Vector3.UP
+	return (flat.normalized() * 0.75 + Vector3.UP).normalized()
+
+func emit_burst(at: Vector3, direction: Vector3, speed: float, amount: int) -> void:
+	var burst := bursts[burst_index]
+	burst_index = (burst_index + 1) % bursts.size()
 	burst.global_position = at
-	burst.amount = clampi(amount, 20, 180)
-	burst.direction = Vector3.UP
-	burst.spread = 75.0
+	burst.amount = clampi(amount, 20, 200)
+	burst.direction = direction
+	burst.spread = 70.0
 	burst.initial_velocity_min = speed * 0.35
 	burst.initial_velocity_max = speed
 	burst.restart()
 	burst.emitting = true
+
+func emit_clods(at: Vector3, speed: float) -> void:
+	clods.global_position = at
+	clods.direction = momentum_direction()
+	clods.initial_velocity_min = speed * 0.5
+	clods.initial_velocity_max = speed
+	clods.restart()
+	clods.emitting = true
 
 func _physics_process(delta: float) -> void:
 	var speed := rider.speed
@@ -138,20 +211,57 @@ func _physics_process(delta: float) -> void:
 	if contact and speed > 3.0:
 		intensity = clampf(speed / 30.0, 0.0, 1.2) * (0.12 + carve * 0.9 + brake * 1.3 + rider.surface.x * 0.35)
 	# CPU particles have no emission ratio: density reads through opacity and size.
-	spray.emitting = intensity > 0.04
+	flow(spray, intensity > 0.04)
 	spray.color = Color(0.93, 0.95, 1.0, clampf(0.25 + intensity * 0.75, 0.0, 0.9))
 	spray.scale_amount_min = 0.5 + intensity * 0.6
 	spray.scale_amount_max = 0.9 + intensity * 1.4
 	if intensity > 0.0:
-		var outward := -side * signf(rider.steer if absf(rider.steer) > 0.05 else 1.0)
+		var outward := side * signf(rider.steer if absf(rider.steer) > 0.05 else 1.0) # outside of the turn
 		var dir := (outward * (0.6 + carve) + rider.grounded_normal * 0.9 - fwd * 0.35).normalized()
 		spray.global_position = board_point() - fwd * 0.4
 		spray.direction = dir
 		spray.spread = 28.0
 		spray.initial_velocity_min = 1.0 + speed * 0.12
 		spray.initial_velocity_max = 2.5 + speed * 0.3 * (0.5 + carve + brake)
+	# Deep-lean plume: a rooster tail thrown out the side OPPOSITE the lean.
+	var p := rider.plume if contact else 0.0
+	flow(plume_core, p > 0.06)
+	flow(plume_mist, p > 0.25)
+	flow(plume_glitter, p > 0.12)
+	if p > 0.06:
+		var out := side * rider.plume_side
+		var origin := board_point() + out * 0.15 - fwd * 0.2
+		var throw := (out * 1.0 + rider.grounded_normal * (0.75 + 0.25 * p) - fwd * 0.12).normalized()
+		var reach := (4.0 + speed * 0.32) * (0.55 + 0.75 * p)
+		plume_core.global_position = origin
+		plume_core.direction = throw
+		plume_core.initial_velocity_min = reach * 0.55
+		plume_core.initial_velocity_max = reach * 1.15
+		# Slightly blue-grey so the airborne snow reads against sunlit snow behind it.
+		plume_core.color = Color(0.74, 0.82, 0.94, clampf(0.4 + p * 0.55, 0.0, 0.95))
+		plume_core.scale_amount_min = 0.6 + p * 0.5
+		plume_core.scale_amount_max = 1.0 + p * 1.5
+		plume_mist.global_position = origin + throw * 1.2
+		plume_mist.direction = (throw + Vector3.UP * 0.4).normalized()
+		plume_mist.initial_velocity_min = reach * 0.25
+		plume_mist.initial_velocity_max = reach * 0.5
+		plume_mist.color = Color(0.8, 0.86, 0.95, 0.14 + 0.2 * p)
+		plume_glitter.global_position = origin
+		plume_glitter.direction = throw
+		plume_glitter.initial_velocity_min = reach * 0.7
+		plume_glitter.initial_velocity_max = reach * 1.35
+	# A tumbling body ploughs a trail of snow while it rolls and slides.
+	var rolling := rider.tumble_active and not rider.tumble_resting and not rider.tumble_airborne and rider.tumble_vel.length() > 1.5
+	flow(tumble_trail, rolling)
+	if rolling:
+		var tumble_speed := rider.tumble_vel.length()
+		tumble_trail.global_position = rider.tumble_pos
+		tumble_trail.direction = momentum_direction()
+		tumble_trail.initial_velocity_min = 1.0 + tumble_speed * 0.15
+		tumble_trail.initial_velocity_max = 2.5 + tumble_speed * 0.45
+		tumble_trail.color = Color(0.78, 0.85, 0.95, clampf(0.3 + tumble_speed / 20.0, 0.0, 0.9))
 	# Nitro: hot ice crystals streaming from the glowing board.
-	embers.emitting = rider.boosting
+	flow(embers, rider.boosting)
 	if rider.boosting:
 		embers.global_position = rider.global_position - rider.grounded_normal * 0.55 - fwd * 0.7
 		embers.direction = (-fwd + Vector3.UP * 0.3).normalized()

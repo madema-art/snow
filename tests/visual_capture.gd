@@ -25,6 +25,8 @@ const SHOTS := {
 	"pause": [0.0, 30.0, 0.0, 0.0, 0.0],
 	"ride_carve": [],
 	"ride_nitro": [],
+	"ride_plume": [],
+	"ride_tumble": [],
 }
 var game: Node3D
 var rider: SnowRider
@@ -61,7 +63,7 @@ func ride(name: String) -> void:
 	Input.action_release("jump")
 	RenderingServer.render_loop_enabled = false
 	var target_x := -150.0
-	for i in 60 * 22:
+	for i in 60 * 8:
 		var desired := atan2(target_x - rider.position.x, 60.0)
 		var steer := clampf(-(desired - rider.heading) * 2.5, -1, 1)
 		Input.action_press("steer_right", maxf(steer, 0))
@@ -73,7 +75,25 @@ func ride(name: String) -> void:
 	if name == "ride_nitro":
 		rider.nitro = 1.0 # VISUAL FIXTURE ONLY: never done in navigation proofs.
 		Input.action_press("boost")
-	for i in (22 if name == "ride_carve" else 40):
+	if name == "ride_plume" or name == "ride_tumble":
+		rider.velocity = rider.velocity.normalized() * 27.0 # VISUAL FIXTURE: speed for the shot
+	if name == "ride_plume":
+		for i in 45:
+			Input.action_press("steer_left", 0.8)
+			await physics_frame
+			await process_frame
+	if name == "ride_tumble":
+		await physics_frame
+		rider.crash(22.0) # VISUAL FIXTURE: a fall on camera
+		for i in 22:
+			await physics_frame
+			await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://work/shots/ride_tumble_a.png")
+		for i in 45:
+			await physics_frame
+			await process_frame
+	for i in (22 if name == "ride_carve" else (0 if name in ["ride_plume", "ride_tumble"] else 40)):
 		var carve := 0.85 if name == "ride_carve" else 0.0
 		Input.action_press("steer_right", carve)
 		Input.action_release("steer_left")

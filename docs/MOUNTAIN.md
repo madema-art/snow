@@ -38,6 +38,7 @@ Pass 4 reshaped the mountain itself after the first hands-on playtest ("the moun
 - The low sun now rakes ACROSS the fall line: every roll, bank, gully and ripple is modelled by light and long shadows instead of flat white.
 - Lips whose ground falls 5–14 m faster than the grade within 24 m are scoured dark; the camera rises when the ground ahead drops away.
 - Shortcut approaches and landings are clear of scenery; both gap jumps are proven clearable with an ordinary ollie (local fixtures).
+- Falling near an edge is dangerous on purpose: a tumble carries real momentum, and one that goes over the gorge lip, the icefall or a cut is fatal.
 - Getting stuck is designed out: A pushes off again whenever the rider is nearly stopped (kicking away from a trunk/boulder if leaning on one); get-up spots need a clear 7 m slide downhill; boulders keep rideable gaps; a rare trimesh-crease freeze self-corrects.
 - Trunk radius 0.3 x scale (collider == visible trunk); canopies are non-solid.
 

@@ -1,6 +1,6 @@
-# Audio design — pass 4
+# Audio design — pass 5
 
-Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 31 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples or third-party assets; the soundtrack is supplied separately by the owner. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
+Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 43 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples or third-party assets; the soundtrack is supplied separately by the owner. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
 
 ## Layers (scripts/snow_audio.gd)
 
@@ -25,7 +25,9 @@ Surface weights are the same `surface_at()` data the physics and terrain shader 
 | Push / ollie | board scrape; tail-snap knock + spray, louder with preload |
 | Landing | land_soft / land_hard: sub thump (pitch-dropping sine), board slap, snow crunch grains, binding rattle; sketchy adds a wobble scrape |
 | Crash | crash_minor / moderate / severe by tier: thumps + decaying tumble impacts + board knocks + spray; tumble_0..2 on each bounce; getup brush |
-| Fatal | huge low impact, debris and a long ground rumble |
+| Fatal | huge low impact, debris and a long ground rumble. On a cliff fall the rider yells all the way down (yell_fall) and the impact sound waits for the ground |
+| Pain (Voice bus) | grunt_hit_0..2 on the first hit (harder falls hurt more); grunt_roll_0..4 on each bounce and roll of the tumble (never the same twice running); groan_0..1 when the body comes to rest after a moderate or worse fall |
+| Plume | plume loop: an airy, rushing sheet of snow while the deep-lean plume is thrown; the skid/chatter layer rises with over-lean as the audible warning before the edge washes out |
 | Charge | glass-bell partials (inharmonic 1, 2.76, 5.40, 8.93): small single chime, big rising triad, full-board shimmer swell |
 | Nitro ignite | deep activation impact → resonant comb build (110 Hz series) with glittering partials → the sustained core: detuned 55 Hz drones + "singing ice" comb resonance + crystalline partials + pressure-wave air. Deliberately not an engine or rocket |
 | Nitro release / deplete | soft power-down breath; descending resonant glide with crackle ending in a low thunk |
@@ -34,6 +36,10 @@ Surface weights are the same `surface_at()` data the physics and terrain shader 
 | Bough | needle brush and falling snow when riding through low canopies |
 
 12 one-shot voices with idle-first stealing; 4 positional voices; loops auto-stop when silent.
+
+## The rider's voice
+
+The pain sounds are synthesised too, with a source-filter model in `tools/synth_audio.py` (`voice()`): a glottal pulse train with pitch glide, jitter, a rough sub-harmonic and strain, plus breath noise, through three vowel formant resonators (uh / oo / ah / eh / oh / ng). No recordings of anyone. One voice plays at a time (`SnowAudio.say`): urgent sounds interrupt, rolling grunts respect a short cooldown, pitch varies ±6%. Being synthetic and unheard so far, the voice is the sound most in need of the owner's ears: if it reads as robotic or comic, it can be retuned or replaced with recorded grunts without touching the game code.
 
 ## Mix
 

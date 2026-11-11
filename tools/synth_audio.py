@@ -509,6 +509,77 @@ def branch_brush():
     write_wav("branch_brush", fade(normalise(needles * 0.6 + fall, -6)))
 
 
+# --------------------------------------------------------------------- voice
+# The rider's pain is synthesised too (source-filter model): a glottal pulse train
+# with pitch glide, jitter and a rough sub-harmonic, plus breath noise, through
+# three vowel formant resonators. No recordings of anyone.
+VOWELS = {
+    "uh": [(640, 8, 1.0), (1190, 10, 0.5), (2390, 12, 0.25)],
+    "oo": [(440, 8, 1.0), (1020, 10, 0.35), (2240, 12, 0.15)],
+    "ah": [(730, 7, 1.0), (1090, 9, 0.7), (2440, 12, 0.3)],
+    "eh": [(530, 8, 1.0), (1840, 11, 0.45), (2480, 12, 0.25)],
+    "oh": [(570, 8, 1.0), (840, 9, 0.55), (2410, 12, 0.2)],
+    "ng": [(300, 6, 1.0), (1100, 9, 0.25), (2300, 11, 0.1)],
+}
+
+
+def voice(dur, pitch, vowel, seed, breath=0.25, rough=0.3, attack=0.01, release=0.08, strain=0.0):
+    """pitch: list of (time_fraction, Hz) control points."""
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    r = rng(seed)
+    f0 = np.interp(t / dur, [p[0] for p in pitch], [p[1] for p in pitch])
+    wobble = shaped_noise(max(n, 2048), lambda f: np.exp(-((f / 9.0) ** 2)), seed + 1)[:n]
+    f0 = f0 * (1.0 + 0.025 * wobble / (np.max(np.abs(wobble)) + 1e-9))
+    phase = np.cumsum(f0) / SR
+    ph = phase % 1.0
+    flow = np.where(ph < 0.42, 0.5 * (1 - np.cos(np.pi * ph / 0.42)), np.where(ph < 0.62, np.cos(0.5 * np.pi * (ph - 0.42) / 0.2), 0.0))
+    src = np.diff(flow, prepend=flow[0])
+    src /= np.max(np.abs(src)) + 1e-9
+    src *= 1.0 + rough * np.sign(np.sin(np.pi * phase))          # period doubling = gravel
+    src += strain * np.tanh(src * 4.0)                             # pushed, strained voice
+    noise = r.standard_normal(n) * breath * (0.35 + 0.65 * flow)
+    x = src + noise
+    out = np.zeros(n)
+    for freq, q, gain in VOWELS[vowel]:
+        out += resonator(x, freq, q, gain)
+    out = fft_filter(out, lambda f: band(f, 90, 6500, 1.2))
+    env = np.minimum(1.0, t / attack) * np.minimum(1.0, (dur - t) / release)
+    return out * env
+
+
+def grunts():
+    # First impact: sharp, loud, strained.
+    oof = voice(0.3, [(0, 185), (0.25, 160), (1, 100)], "oo", 701, breath=0.3, rough=0.35, strain=0.5)
+    n = len(oof)
+    f_noise = noise_burst(n, 2500, 9000, 0.05, 702, 0.02) * np.interp(np.arange(n) / n, [0, 0.6, 0.75, 1], [0, 0, 1, 0.2])
+    write_wav("grunt_hit_0", fade(normalise(oof + f_noise * 0.5, -3)))
+    ugh = voice(0.34, [(0, 170), (0.3, 140), (1, 92)], "uh", 711, breath=0.2, rough=0.55, strain=0.6)
+    write_wav("grunt_hit_1", fade(normalise(ugh, -3)))
+    agh = voice(0.42, [(0, 220), (0.2, 235), (1, 120)], "ah", 721, breath=0.25, rough=0.45, strain=0.7)
+    write_wav("grunt_hit_2", fade(normalise(agh, -3)))
+    # While rolling: short, knocked-out-of-you sounds.
+    for i, (vowel, hi, lo, dur) in enumerate([("uh", 150, 118, 0.17), ("ah", 175, 130, 0.2), ("ng", 140, 105, 0.22), ("eh", 165, 125, 0.16), ("oo", 135, 100, 0.19)]):
+        g = voice(dur, [(0, hi), (1, lo)], vowel, 731 + i * 7, breath=0.35, rough=0.3, strain=0.3, release=0.05)
+        write_wav(f"grunt_roll_{i}", fade(normalise(g, -6)))
+    # Coming to rest: a long, sore exhale.
+    write_wav("groan_0", fade(normalise(voice(0.95, [(0, 125), (0.3, 115), (1, 82)], "uh", 771, breath=0.55, rough=0.25, attack=0.08, release=0.35), -7)))
+    write_wav("groan_1", fade(normalise(voice(1.15, [(0, 118), (0.4, 105), (1, 78)], "oh", 781, breath=0.6, rough=0.3, attack=0.1, release=0.45), -7)))
+    # Falling a long way.
+    yell = voice(1.7, [(0, 230), (0.15, 310), (0.6, 290), (1, 190)], "ah", 791, breath=0.2, rough=0.25, strain=0.8, attack=0.04, release=0.5)
+    write_wav("yell_fall", fade(normalise(yell, -4)))
+
+
+def plume_spray():
+    # The rooster tail: an airy, rushing sheet of snow with a slow swell.
+    n = int(3.0 * SR)
+    sheet = shaped_noise(n, lambda f: band(f, 450, 5200, 1.2) * (f / 1500) ** -0.3, 801)
+    swell = periodic_lfo(n, 2.2, 802, 0.22)
+    grit = grains(n, 1100, 0.005, 803, lambda f: band(f, 700, 6000, 1.2))
+    grit /= np.std(grit) + 1e-9
+    write_wav("plume", normalise(sheet * swell * 0.85 + grit * 0.35, -3), loop=True)
+
+
 def main():
     snow_packed(); snow_powder(); snow_ice(); carve(); skid()
     wind_base(); wind_rush(); cloth(); nitro_loop()
@@ -522,6 +593,7 @@ def main():
     charge("charge_big", [659.25, 880.0, 1318.5], 0.45, 611)
     charge_full()
     whoosh(); branch_brush()
+    grunts(); plume_spray()
 
 
 if __name__ == "__main__":

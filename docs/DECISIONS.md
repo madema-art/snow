@@ -1,4 +1,4 @@
-# Locked decisions — after pass 4
+# Locked decisions — after pass 5
 
 - Repository `madema-art/snow` is the source of truth; work on branches, merge via PR, never force-push `main`. `Start-Snow.bat` fast-forward pulls `main` then opens the project in Godot 4.7.2. Game code uses only `res://`/`user://`.
 - Course `massif_v3` (9360 x 1200 m, ~3.11 km drop, five regions, spawn Z=8, finish Z=9180): pass 4 reshaped the terrain between the pass-2/3 hazards (summit peak, pitches/benches, drainage gullies, relief, clumped scenery) after the owner's playtest, so records use `snow_records_massif_v3.json`; v2 and older files are kept and never mixed. Any future geometry change that affects comparability must again use a new file.
@@ -8,7 +8,8 @@
 - Carving model: yaw rate limited by CARVE_ACCEL / speed (22 m/s²) and PIVOT_RATE (1.9 rad/s); edge engagement scales grip; braking breaks grip into a skid. Surfaces (powder/ice) are subtle and shared by physics, shader, audio and haptics.
 - Ollie on release of A with preload (+30%) and 0.14 s coyote time; floor snap suspended 0.2 s after a pop (fixes ollies at speed). Air drag in flight is 0.35 x riding drag. LS pre-aims the board in the air without moving the rider.
 - Trick rewards: air time, drop size, completed 180s, flips, grabs, combos, landing quality; per-trick and global fatigue prevent farming; cap 0.85 per landing. Clean 180s ride switch.
-- EVERY fall wipes ALL velocity, speed and nitro instantly. Tumbles are presentation only; get-up at the tumble rest point only if safe (≤9 m, no lip, no hazard, clear ray) — never an advantage. Recovery 1.2–7 s by severity, clock running. Fatal falls end without records; results appear after a short beat.
+- EVERY fall wipes ALL riding velocity, speed and nitro instantly. By owner request (pass 5) the fall itself is exaggerated momentum physics: the body keeps ~60% of crash velocity, bounces, rolls and slides to rest and the rider gets up there; tumbling over a drop ≥18 m is fatal; pain grunts on every impact. Recovery 1.2–7 s by severity and never before the body rests, clock running. Fatal falls end without records; results appear after a short beat.
+- Left stick forward = tuck, back = brake (fixed). View = camera close/medium/far. Restart = Y held ~0.35 s (remappable). Deep lean throws a plume and turns tighter; over-leaning near full lock for ~2 s at speed is a fall.
 - Right stick is ONLY camera. Free look is held relative to travel direction; 3 s idle settle; RS click smooth recenter; summit view holds until push-off. No random camera shake.
 - Trunk visual radius == collider radius (0.3 x scale, height 4.8 x scale); canopies non-solid. Rocks/outcrops collide with convex hulls of their exact visual vertices.
 - No HUD, ever. Pause/results is the only UI, also opened by controller disconnect and focus loss mid-run.

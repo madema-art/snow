@@ -312,6 +312,9 @@ func update_pose(delta: float, target: Basis, on_ground: bool) -> void:
 	if on_ground and r.run.state != "ready":
 		target_lean = clampf(-atan2(r.speed * r.yaw_rate, SnowTuning.GRAVITY) * 0.9, -0.95, 0.95)
 		target_lean -= r.brake_input * 0.22 * clampf(r.speed / 10.0, 0.0, 1.0)
+		# Deep carve and over-lean: the body drops toward the snow, nearly laid out
+		# just before the edge washes out (the only "warning light" there is).
+		target_lean += signf(r.steer) * (r.plume * 0.12 + r.over_lean * 0.55)
 	lean = lerpf(lean, target_lean, 1.0 - exp(-9.0 * delta))
 	# Board chatter on hard, icy snow at speed (tiny, visual only).
 	var chatter := 0.0

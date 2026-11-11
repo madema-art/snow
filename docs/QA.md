@@ -53,7 +53,7 @@ Each run first does camera checks, then **A: straight** (push-off, no steering; 
 ## 6. Visual captures (software GL is fine)
 
 ```bash
-xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --rendering-driver opengl3 --script res://tests/visual_capture.gd
+xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/visual_capture.gd
 ```
 
 Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.

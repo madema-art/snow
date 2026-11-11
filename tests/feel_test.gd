@@ -148,12 +148,12 @@ func go() -> void:
 		moved = maxf(moved, rider.tumble_pos.distance_to(body_at))
 		if rider.position.distance_to(body_at) > 0.01 or rider.velocity != Vector3.ZERO or rider.speed != 0.0 or rider.nitro != 0.0:
 			still = false
-	check(speed_before > 8.0 and moved > 0.5 and moved <= SnowTuning.TUMBLE_MAX_TRAVEL + 1.0, "visible tumble moves the body visual a limited distance")
+	check(speed_before > 8.0 and moved > 0.5, "the fallen body is thrown and tumbles away from the crash point")
 	check(still, "during the tumble the physics body has no speed, travel or nitro")
 	var t_before := run.elapsed
 	while rider.recovery > 0.0:
 		await frames(1)
-	check(run.elapsed > t_before + 1.0 and rider.position.distance_to(body_at) <= SnowTuning.TUMBLE_MAX_TRAVEL + 1.5, "get-up costs clock time and gains no meaningful ground")
+	check(run.elapsed > t_before + 1.0 and rider.position.distance_to(rider.tumble_pos) < 15.0, "get-up costs clock time and happens where the tumble came to rest")
 	check(not rider.visual.top_level and rider.recovery == 0.0, "rider is back on the board after recovery")
 	check(rider.crash_tier() == 1, "severity 18 is a moderate crash tier")
 
@@ -226,6 +226,149 @@ func go() -> void:
 	for loop_name in SnowAudio.LOOPS:
 		if loop_name != "nitro_loop": loudest_bed = maxf(loudest_bed, SnowAudio.LOOPS[loop_name][1])
 	check(not SnowAudio.LOOPS.has("wind_whistle") and loudest_bed <= 0.5 and SnowMusic.MUSIC_BUS_DB >= -4.0 and SnowMusic.DUCK_DB >= -3.0, "playtest mix rules hold: no whistle layer, quiet beds, music leads")
+	# --- Pass 5: momentum tumbles ---------------------------------------------
+	var slow_fall := await tumble_fixture(10.0, 8.0)
+	var fast_fall := await tumble_fixture(30.0, 20.0)
+	print("TUMBLE slow=", slow_fall, " fast=", fast_fall)
+	check(fast_fall.travel > slow_fall.travel * 1.8 and fast_fall.travel > 12.0, "a faster crash tumbles much farther (%.1f m vs %.1f m): momentum physics" % [fast_fall.travel, slow_fall.travel])
+	check(fast_fall.frozen and slow_fall.frozen, "riding speed, velocity and nitro stay at zero for the whole tumble")
+	check(fast_fall.travel / fast_fall.time < 30.0 * 0.6 and fast_fall.time > 1.5, "the tumble is far slower than riding and costs seconds (%.1f s)" % fast_fall.time)
+	check(fast_fall.impacts >= 2 and fast_fall.impacts > slow_fall.impacts - 1, "the body bounces and rolls: %d separate impacts" % fast_fall.impacts)
+	check(fast_fall.groan and fast_fall.stood, "it comes to rest with a groan and the rider stands up there")
+	var audio: SnowAudio
+	for child in game.get_children():
+		if child is SnowAudio: audio = child
+	menu.restart()
+	await press_and_run(60)
+	rider.crash(20.0)
+	check(audio.voice.playing and audio.voice.stream == audio.streams["grunt_hit_1"], "the first hit knocks a grunt out of the rider")
+	events.clear()
+	audio.voice_cooldown = 0.0
+	rider.sound_event.emit("tumble", 0.6)
+	check(audio.voice.playing and audio.voice.stream != audio.streams["grunt_hit_1"], "rolling impacts add their own grunts")
+	# A tumble that goes over a real drop is fatal (FIXTURE: placed above the gorge lip).
+	menu.restart()
+	run.push_off()
+	var lip_z := 1452.0 * SnowMountain.DISTANCE_SCALE
+	rider.position = Vector3(0, SnowMountain.height_at(0, lip_z) + 0.72, lip_z)
+	rider.velocity = Vector3(0, -8, 26)
+	await frames(2)
+	rider.crash(10.0)
+	check(run.state == "running", "a fall near the gorge starts as an ordinary fall")
+	await frames(420)
+	check(run.state == "ended" and rider.last_crash_reason == "tumbled off a drop", "tumbling over the gorge lip is a fatal fall, by physics not by zone")
+
+	# --- Pass 5: deep lean, plume and over-lean --------------------------------
+	menu.restart()
+	await press_and_run(60)
+	rider.velocity = Vector3(0, -9, 28) # FIXTURE: at speed on the summit face
+	await frames(2)
+	Input.action_press("steer_right", 0.75)
+	await frames(150)
+	check(rider.recovery == 0.0 and rider.over_lean == 0.0 and rider.plume > 0.5 and rider.plume_side > 0.0, "a committed carve throws a plume and never tips the rider (plume %.2f)" % rider.plume)
+	Input.action_release("steer_right")
+	menu.restart()
+	await press_and_run(60)
+	rider.velocity = Vector3(0, -9, 30)
+	await frames(2)
+	Input.action_press("steer_left", 1.0)
+	var lock_frames := 0
+	var max_plume := 0.0
+	var warned := false
+	while rider.recovery == 0.0 and lock_frames < 400:
+		await frames(1)
+		lock_frames += 1
+		max_plume = maxf(max_plume, rider.plume)
+		if rider.over_lean > 0.5: warned = true
+	Input.action_release("steer_left")
+	check(rider.recovery > 0.0 and rider.last_crash_reason == "over-lean" and lock_frames > 60 and lock_frames < 240, "leaning too far for too long washes the edge out into a tumble (after %.2f s)" % (lock_frames / 60.0))
+	check(max_plume > 0.8 and warned, "full lean throws the biggest plume and builds a warning first")
+	check(rider.nitro == 0.0 and rider.velocity == Vector3.ZERO, "an over-lean fall wipes speed and nitro like any other fall")
+	menu.restart()
+	await press_and_run(60)
+	rider.velocity = Vector3(0, -9, 30)
+	await frames(2)
+	Input.action_press("steer_left", 1.0)
+	Input.action_press("brake", 1.0)
+	await frames(200)
+	Input.action_release("steer_left")
+	Input.action_release("brake")
+	check(rider.recovery == 0.0 and rider.last_crash_reason != "over-lean", "a braking skid turn at full lock stays upright")
+
+	# --- Pass 5: left stick forward/back, restart hold, camera range, mapping upgrade
+	menu.restart()
+	await press_and_run(90)
+	var ls := InputEventJoypadMotion.new()
+	ls.axis = JOY_AXIS_LEFT_Y
+	ls.axis_value = -1.0
+	Input.parse_input_event(ls)
+	await frames(3)
+	check(rider.tuck_input > 0.9 and rider.brake_input == 0.0, "left stick forward crouches into a tuck")
+	ls = ls.duplicate()
+	ls.axis_value = -0.2
+	Input.parse_input_event(ls)
+	await frames(3)
+	check(rider.tuck_input == 0.0, "small stick drift neither tucks nor brakes")
+	var speed_at := rider.speed
+	ls = ls.duplicate()
+	ls.axis_value = 1.0
+	Input.parse_input_event(ls)
+	await frames(60)
+	check(rider.brake_input > 0.9 and rider.speed < speed_at, "pulling the left stick back brakes")
+	ls = ls.duplicate()
+	ls.axis_value = 0.0
+	Input.parse_input_event(ls)
+	await frames(2)
+	Input.action_press("restart")
+	await frames(6)
+	Input.action_release("restart")
+	await frames(2)
+	check(run.state == "running", "a tap on restart does nothing")
+	Input.action_press("restart")
+	await frames(30)
+	Input.action_release("restart")
+	check(run.state == "ready" and run.elapsed == 0.0, "holding restart returns to the summit")
+	camera.range_path = "user://test_feel_camera.json"
+	camera.range_index = 1
+	await frames(90)
+	var mid_view := camera.distance
+	Input.action_press("camera_range")
+	await frames(2)
+	Input.action_release("camera_range")
+	await frames(120)
+	var far_view := camera.distance
+	Input.action_press("camera_range")
+	await frames(2)
+	Input.action_release("camera_range")
+	await frames(120)
+	var near_view := camera.distance
+	check(camera.range_index == 0 and far_view > mid_view * 1.3 and near_view < mid_view * 0.85, "View cycles the camera medium -> far -> close (%.1f / %.1f / %.1f m)" % [mid_view, far_view, near_view])
+	camera.range_index = 2
+	camera.load_range()
+	check(camera.range_index == 0, "the chosen camera distance is remembered")
+	Input.action_press("camera_range")
+	await frames(2)
+	Input.action_release("camera_range")
+	check(camera.range_index == 1 and run.state == "ready", "the View button no longer restarts the run")
+	DirAccess.remove_absolute("user://test_feel_camera.json")
+	var old_map: Dictionary = SnowControls.DEFAULTS.duplicate(true)
+	old_map.erase("camera_range")
+	old_map["restart"] = ["button", JOY_BUTTON_BACK, 1] # the pass-4 default
+	old_map["boost"] = ["button", JOY_BUTTON_DPAD_LEFT, 1] # a deliberate player remap
+	var old_file := FileAccess.open("user://test_feel_controls.json", FileAccess.WRITE)
+	old_file.store_string(JSON.stringify(old_map))
+	old_file.close()
+	controls.load_settings()
+	check(controls.bindings.size() == SnowControls.DEFAULTS.size() and controls.bindings.camera_range == ["button", JOY_BUTTON_BACK, 1] and controls.bindings.restart == ["button", JOY_BUTTON_Y, 1] and controls.bindings.boost == ["button", JOY_BUTTON_DPAD_LEFT, 1], "older saved mapping upgrades: View becomes camera, restart moves to Y, player remaps kept")
+	old_map["restart"] = ["button", JOY_BUTTON_DPAD_RIGHT, 1] # the player had moved restart themselves
+	old_file = FileAccess.open("user://test_feel_controls.json", FileAccess.WRITE)
+	old_file.store_string(JSON.stringify(old_map))
+	old_file.close()
+	controls.load_settings()
+	check(controls.bindings.restart == ["button", JOY_BUTTON_DPAD_RIGHT, 1] and controls.bindings.camera_range == ["button", JOY_BUTTON_BACK, 1], "a restart the player remapped themselves is left where they put it")
+	controls.bindings = SnowControls.DEFAULTS.duplicate(true)
+	controls.apply_bindings()
+
 	# --- Soundtrack manager (real files in res://assets/music/) ------------
 	var music: SnowMusic = game.get_node("Music")
 	var opener := music.music_dir.path_join(SnowMusic.OPENING_TRACK)
@@ -316,6 +459,31 @@ func go() -> void:
 		DirAccess.remove_absolute(path)
 	print("FEEL TESTS failures=", failures)
 	quit(0 if failures == 0 else 1)
+
+## FIXTURE: ride off the summit, set a downhill speed, fall, and measure the tumble.
+func tumble_fixture(ride_speed: float, severity: float) -> Dictionary:
+	menu.restart()
+	await press_and_run(60)
+	rider.velocity = Vector3(0, -ride_speed * 0.3, ride_speed)
+	await frames(2)
+	events.clear()
+	rider.nitro = 0.6
+	var from := rider.position
+	rider.crash(severity)
+	var frozen := true
+	var ticks := 0
+	while not rider.tumble_resting and ticks < 900:
+		await frames(1)
+		ticks += 1
+		if rider.velocity != Vector3.ZERO or rider.speed != 0.0 or rider.nitro != 0.0 or rider.position.distance_to(from) > 0.01:
+			frozen = false
+	var rest := rider.tumble_pos
+	var impacts := events.count("tumble")
+	var groan := "groan" in events
+	while rider.recovery > 0.0 and ticks < 2000:
+		await frames(1)
+		ticks += 1
+	return {"travel": Vector2(rest.x - from.x, rest.z - from.z).length(), "time": rider.tumble_time, "impacts": impacts, "groan": groan, "frozen": frozen, "stood": rider.recovery == 0.0 and rider.position.distance_to(rest) < 15.0}
 
 ## Restart-independent helper: push off from the summit with ordinary input and ride.
 func press_and_run(count: int) -> void:

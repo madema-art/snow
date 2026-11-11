@@ -35,6 +35,22 @@ const ICE_RESISTANCE := -0.15
 const POWDER_RESISTANCE := 0.75
 const POWDER_DRAG := 0.12
 
+# --- Left stick forward / back (fixed, alongside the remappable triggers) ---
+const LEAN_DEADZONE := 0.3         # Stick Y below this is ignored so steering never brakes/tucks by accident.
+const RESTART_HOLD := 0.35         # Hold the restart control this long (a tap can never wipe a run).
+
+# --- Deep carve, snow plume and over-lean ---
+const PLUME_START := 0.45          # Edge engagement where the plume begins...
+const PLUME_FULL := 0.8            # ...and where it is a full rooster tail.
+const PLUME_MIN_SPEED := 7.0
+const PLUME_FULL_SPEED := 20.0
+const DEEP_LEAN_START := 0.82      # Raw stick deflection where the lean becomes "too far"...
+const DEEP_LEAN_TURN_BONUS := 0.2  # ...which turns tighter (the reward)...
+const OVERLEAN_TIME := 1.9         # ...but held at full lock this long, the edge washes out.
+const OVERLEAN_RECOVER := 0.45     # Seconds to come back upright once the stick eases off.
+const OVERLEAN_MIN_SPEED := 7.0    # Slow pivots never tip the rider over.
+const OVERLEAN_FULL_SPEED := 15.0
+
 # --- Standing push ---
 const PUSH_MAX_SPEED := 2.2      # Below this speed A pushes off instead of ollieing.
 const PUSH_SPEED := 3.2
@@ -88,8 +104,20 @@ const RECOVERY_MIN := 1.2
 const RECOVERY_PER_SEVERITY := 0.12
 const RECOVERY_MAX := 7.0
 const GETUP_TIME := 0.9            # Final part of recovery spent standing up.
-const TUMBLE_SPEED_SHARE := 0.32   # Visual-only tumble; NEVER feeds back into riding speed.
-const TUMBLE_MAX_TRAVEL := 9.0
+# Tumbles are momentum physics: the body is thrown with most of the speed it had,
+# bounces, rolls and slides to rest. Riding speed and nitro are still wiped at once;
+# the tumble only decides where (and how sorely) the rider ends up.
+const TUMBLE_MOMENTUM := 0.62      # Share of crash velocity the body keeps.
+const TUMBLE_REBOUND := 0.38       # Share kept when thrown back off a trunk/boulder.
+const TUMBLE_RESTITUTION := 0.42   # Bounce off the snow...
+const TUMBLE_IMPACT_LOSS := 0.3   # ...losing this share of sliding speed per impact.
+const TUMBLE_FRICTION := 11.0      # Rolling/sliding deceleration (m/s^2)...
+const TUMBLE_PLOW := 0.3           # ...plus this per m/s of speed (snow ploughing).
+const TUMBLE_HOP := 0.24           # Cartwheel hop: share of speed pitched upward...
+const TUMBLE_HOP_MIN_SPEED := 8.0  # ...while the body is still moving this fast.
+const TUMBLE_FATAL_DROP := 18.0    # Tumbling off a drop this high is not survivable.
+const TUMBLE_MAX_TIME := 9.0
+const TUMBLE_MAX_TRAVEL := 70.0    # Safety bound only; friction normally stops it far sooner.
 
 # --- Camera ---
 const CAM_DEADZONE := 0.18
@@ -108,4 +136,6 @@ const CAM_FOV_REST := 62.0
 const CAM_FOV_FAST := 73.0
 const CAM_FOV_BOOST := 4.0
 const CAM_COLLISION_RADIUS := 0.35
+const CAM_RANGES := [0.72, 1.0, 1.5]  # View button: close / medium / far boom length.
+const CAM_RANGE_LIFT := [-0.02, 0.0, 0.06]
 const CAM_REEXTEND_SPEED := 3.5    # Metres/second the camera may slide back out after an obstruction.
