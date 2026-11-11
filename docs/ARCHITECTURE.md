@@ -17,7 +17,7 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 | scripts/chase_camera.gd | `SnowCamera`: travel-relative free look, analog rate smoothing, idle settle/recenter, speed framing/FOV, drop anticipation, sprung anchor, landing nod, asymmetric sphere collision |
 | scripts/snow_fx.gd | `SnowFX`: edge spray, landing/crash/tumble bursts, nitro embers, bough snow, persistent board tracks (ribbon segments) |
 | scripts/snow_audio.gd | `SnowAudio`: bus graph, 10 surface/wind/nitro loops mixed from rider state, 12-voice one-shot pool with stealing, 4 positional voices (tree pass-bys, boughs), environment (exposure, forest shelter, cliff reverb) |
-| scripts/music.gd | `SnowMusic`: soundtrack manager — fixed opener, shuffle bag without back-to-back repeats, crossfades, ducking, pause-in-place, auto-discovery in editor/exports, silent when empty |
+| scripts/music.gd | `SnowMusic`: soundtrack manager — fixed opener, shuffle bag without back-to-back repeats, crossfades, per-song level matching, pause-in-place, auto-discovery in editor/exports, silent when empty |
 | scripts/haptics.gd | `SnowHaptics`: continuous snow rumble + event pulses (landing, crash tiers, nitro, empty sputter) on the first connected pad |
 | scripts/controls.gd | `SnowControls`: default bindings, fixed LS steering and UI events, validated remaps with conflict swap, persistence, v1 migration, readable names |
 | scripts/run_state.gd | `SnowRun`: ready/running/finished/ended, clock, top-ten persistence, last rank |
@@ -31,6 +31,10 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 +Z downhill, +Y up, X across (-600..600). With the default camera looking downhill, screen-right is world -X, so positive steer reduces heading. Logical distance = world Z / `DISTANCE_SCALE` (1.2) for feature definitions. Spawn Z=8, finish Z=9180 (|X|<50, grounded, not recovering). Terrain backing Z=-200..9600 in 48 chunks of 150x25 cells (8 m), ~360k triangles; render triangles == collision triangles. See MOUNTAIN.md.
 
 Per-vertex COLOR on terrain: r = powder, g = ice (both from `surface_from`, the same function physics uses), b = rock/lip scour (slope + drop-ahead/side-drop detection), a = AO (pooled around trunks/boulders and in concavities).
+
+## Terrain function (massif_v3)
+
+`SnowMountain.height_at(x, distance)` is the single source of truth (rendering, collision, physics surfaces, camera anticipation, audio exposure, tumbles). Layers: base grade 0.34; summit peak (ground falls behind the start, convex shoulders for the first km, then the 0.00019 x² bowl); pitch/bench waves (grade ≈0.24–0.44); a static seeded `FastNoiseLite` relief; two drainage gullies along `west_line()`/`east_line()` (also the forest corridors); then the hand-built hazards and jumps (gorge + spur gap with lowered far rim, buttress, escarpment, broken ridges, two cuts + pinch gap, ramps, rollers, tabletop) and perimeter cornices. Scenery uses `tree_density()`/`rock_density()` (altitude x clump noise) and boulders keep a rideable gap from every other hazard.
 
 ## Physics (60 Hz)
 
@@ -50,6 +54,8 @@ Contacts: snow-only contacts restore pre-contact tangent momentum to remove seam
 
 Landing: yaw error (180s allowed, ride switch), pitch error, board-vs-travel alignment and impact; quality 0..1. Reward = (air + drop + spins + flips + grab) x combo x quality / (1 + trick fatigue + global fatigue x 0.45), capped at 0.85. Fatigue decays 1/25 s per trick, 1/7 s global.
 
+Anti-stuck: A pushes off again below 2.2 m/s (kicking away from a trunk/boulder the rider leans on); get-up and recovery spots require a clear 7 m capsule sweep down the fall line; if `move_and_slide` makes no progress at speed on snow (a rare trimesh-crease pin) the capsule is lifted a few centimetres per tick until it rides free.
+
 Crash: `crash()` zeros nitro, velocity, speed, boost and trick state FIRST, then starts a tumble whose motion lives only in `tumble_pos/basis` (presentation). The body never moves during recovery. At get-up (last 0.9 s) the body is placed at the tumble rest point if it is standable, within 9 m, below no lip and reachable by an unobstructed ray; otherwise at the conservative recovery point. Fatal tumbles keep falling for presentation; the run is already over.
 
 ## Camera
@@ -58,7 +64,7 @@ Crash: `crash()` zeros nitro, velocity, speed, boost and trick state FIRST, then
 
 ## Rendering
 
-Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with sun scatter and aerial perspective, sky shader (gradient, haze, sun disk/glow, cirrus) also providing ambient. Sun: 4 PSSM splits to 260 m. Trees: 4 variants x near (≤420 m, shadows) + far LOD (420–2600 m, no shadows) MultiMeshes per chunk; rocks/outcrops 4 variants ≤1600 m. Compatibility multiplies vertex COLOR by the MultiMesh instance colour, so MultiMeshes set white instance colours. Board tracks: alpha ribbons, distance-faded, last ~70 segments kept. Particles: CPUParticles3D (no emission-ratio support), density expressed through opacity/size.
+Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with sun scatter and aerial perspective, sky shader (gradient, haze, sun disk/glow, cirrus) also providing ambient. Sun: low and from the side (raking across the fall line, `SnowAtmosphere.SUN_DIRECTION`, shared with the terrain shader), 4 PSSM splits to 260 m. Trees: 4 variants x near (≤420 m, shadows) + far LOD (420–2600 m, no shadows) MultiMeshes per chunk; rocks/outcrops 4 variants ≤1600 m. Compatibility multiplies vertex COLOR by the MultiMesh instance colour, so MultiMeshes set white instance colours. Board tracks: alpha ribbons, distance-faded, last ~70 segments kept. Particles: CPUParticles3D (no emission-ratio support), density expressed through opacity/size.
 
 ## Audio
 
@@ -66,7 +72,7 @@ See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue comp
 
 ## Saves and UI
 
-`SnowRun` keeps the course-specific top ten (`user://snow_records_massif_v2.json`), sorted, clamped to ten, malformed entries filtered. `SnowControls` persists `user://snow_controls_v2.json` (exactly the 15 remappable actions, unique, validated; v1 migration). Pause menu UI is authored for the 3840x2160 canvas (stretch mode canvas_items).
+`SnowRun` keeps the course-specific top ten (`user://snow_records_massif_v3.json`), sorted, clamped to ten, malformed entries filtered. `SnowControls` persists `user://snow_controls_v2.json` (exactly the 15 remappable actions, unique, validated; v1 migration). Pause menu UI is authored for the 3840x2160 canvas (stretch mode canvas_items).
 
 ## Performance notes
 

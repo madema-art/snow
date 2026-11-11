@@ -1,7 +1,9 @@
-# Locked decisions — after pass 3
+# Locked decisions — after pass 4
 
 - Repository `madema-art/snow` is the source of truth; work on branches, merge via PR, never force-push `main`. `Start-Snow.bat` fast-forward pulls `main` then opens the project in Godot 4.7.2. Game code uses only `res://`/`user://`.
-- Course `massif_v2` (9360 x 1200 m, ~3115 m drop, five regions, spawn Z=8, finish Z=9180) is unchanged in layout and seeds; pass 3 added optional jump features (east summit rollers, Broken Mountain pinch gap, final tabletop) that do not change the reference route's comparability, so records stay in `snow_records_massif_v2.json`. A future geometry change that affects comparability must use a new records file and keep old files.
+- Course `massif_v3` (9360 x 1200 m, ~3.11 km drop, five regions, spawn Z=8, finish Z=9180): pass 4 reshaped the terrain between the pass-2/3 hazards (summit peak, pitches/benches, drainage gullies, relief, clumped scenery) after the owner's playtest, so records use `snow_records_massif_v3.json`; v2 and older files are kept and never mixed. Any future geometry change that affects comparability must again use a new file.
+- Owner playtest feedback is binding: the music leads the mix (effects bed ≈9 dB under it at speed); wind is soft and dark, never hissy/whistling; the mountain must have shape and character, lit by a raking sun.
+- Nobody may get stuck: A pushes off whenever nearly stopped; boulders keep rideable gaps; get-up needs a clear path downhill.
 - About FIVE MINUTES for a good skilled descent. No speed cap, clock padding, delayed finish or reduced acceleration. Gravity 20, drag 0.0075, boost 24 m/s², burn 0.25/s preserved.
 - Carving model: yaw rate limited by CARVE_ACCEL / speed (22 m/s²) and PIVOT_RATE (1.9 rad/s); edge engagement scales grip; braking breaks grip into a skid. Surfaces (powder/ice) are subtle and shared by physics, shader, audio and haptics.
 - Ollie on release of A with preload (+30%) and 0.14 s coyote time; floor snap suspended 0.2 s after a pop (fixes ollies at speed). Air drag in flight is 0.35 x riding drag. LS pre-aims the board in the air without moving the rider.

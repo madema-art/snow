@@ -5,7 +5,7 @@ signal ended
 var elapsed := 0.0
 var state := "ready"
 var records: Array = []
-var records_path := "user://snow_records_massif_v2.json"
+var records_path := "user://snow_records_massif_v3.json"
 var last_rank := -1 # Index in the top ten of the latest finish, or -1.
 
 func _ready() -> void:

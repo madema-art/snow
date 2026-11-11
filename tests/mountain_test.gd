@@ -18,6 +18,8 @@ var trick_index := 0
 var nitro_earned := 0.0
 var boost_frames := 0
 var tricks_landed := 0
+var stall_frames := 0
+var frozen := 0
 
 func _initialize() -> void: go.call_deferred()
 func check(value: bool, message: String) -> void:
@@ -73,6 +75,15 @@ func drive() -> void:
 	var open_ahead := nearest > lookahead + 10.0
 	if tricks:
 		drive_tricks(geo_z, open_ahead)
+	# Stalled against something: turn the board down the fall line and push (A).
+	if rider.speed < 1.0 and rider.recovery <= 0.0 and rider.is_on_floor():
+		stall_frames += 1
+	else:
+		stall_frames = 0
+	if stall_frames > 45:
+		target = Vector2(rider.position.x + (40.0 if stall_frames % 240 < 120 else -40.0), rider.position.z + 30.0)
+		if stall_frames % 30 == 0: Input.action_press("jump")
+		elif stall_frames % 30 == 2: Input.action_release("jump")
 	var desired := atan2(target.x - rider.position.x, maxf(8,target.y - rider.position.z))
 	var error := wrapf(desired - rider.heading, -PI, PI)
 	var steer := clampf(-error * 2.8, -1, 1)
@@ -196,6 +207,16 @@ func go() -> void:
 	for i in 36000:
 		drive()
 		await step()
+		if previous.distance_to(rider.position) < 0.0001 and rider.recovery <= 0.0 and rider.speed > 5.0:
+			frozen += 1
+			if frozen == 30:
+				var info := ""
+				for c in rider.get_slide_collision_count():
+					var hit := rider.get_slide_collision(c)
+					info += " [n=%s col=%s meta=%s at=%s]" % [hit.get_normal(), hit.get_collider().name, hit.get_collider().get_meta("hazard", "-"), hit.get_position()]
+				print("FROZEN p=", rider.position, " v=", rider.velocity, " floor=", rider.is_on_floor(), " paused=", paused, " state=", run.state, info)
+		else:
+			frozen = 0
 		distance += previous.distance_to(rider.position)
 		previous = rider.position
 		max_speed = maxf(max_speed,rider.speed)

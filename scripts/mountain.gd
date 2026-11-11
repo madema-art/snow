@@ -6,9 +6,9 @@ const DISTANCE_SCALE := 1.2
 const WIDTH := 1200.0
 const STEP := 8.0
 const FINISH := 9180.0
-const COURSE_ID := "massif_v2"
+const COURSE_ID := "massif_v3"
 const CHUNK := 200.0
-const TREE_NEAR_RANGE := 420.0
+const TREE_NEAR_RANGE := 320.0
 const TREE_FAR_RANGE := 2600.0
 const ROCK_RANGE := 1600.0
 var terrain_material: ShaderMaterial
@@ -25,23 +25,71 @@ var hazard_buckets: Dictionary = {}
 var tree_buckets: Dictionary = {}
 var pending_rocks: Dictionary = {}   # chunk start -> [transforms per variant, custom per variant]
 var atmosphere: SnowAtmosphere
+var clump_noise := _make_noise(907, 1.0 / 150.0, 2)
+var rock_noise := _make_noise(311, 1.0 / 85.0, 1)
 
 static func band(v: float, lo: float, hi: float, feather: float) -> float:
 	return smoothstep(lo - feather, lo, v) * (1.0 - smoothstep(hi, hi + feather, v))
+
+static var _relief: FastNoiseLite = _make_noise(4117, 1.0 / 115.0, 2)
+
+static func _make_noise(noise_seed: int, frequency: float, octaves: int) -> FastNoiseLite:
+	var n := FastNoiseLite.new()
+	n.seed = noise_seed
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	n.fractal_type = FastNoiseLite.FRACTAL_FBM
+	n.fractal_octaves = octaves
+	n.frequency = frequency
+	return n
+
+## Centre lines (world X for a logical distance) of the two natural drainages that
+## wind down the whole mountain: banked snow gullies on the open faces, creek beds
+## that ARE the forest corridors, and the valley floor at the finish. The west
+## drainage pours over the forest escarpment as an icefall; the east one ends in
+## the broken mountain. They suggest lines; they never wall the rider in.
+static func west_line(z: float) -> float:
+	var x := lerpf(-300.0 + 70.0 * sin(z / 330.0 + 0.4), -180.0 + 95.0 * sin((z - 2800.0) / 300.0), smoothstep(2450.0, 2950.0, z))
+	x = lerpf(x, -300.0 + 40.0 * sin(z / 210.0), smoothstep(4600.0, 5000.0, z))
+	return lerpf(x, -70.0, smoothstep(6400.0, 7300.0, z))
+
+static func east_line(z: float) -> float:
+	var upper := 320.0 + 60.0 * sin(z / 290.0 + 2.0) + 110.0 * exp(-pow((z - 2310.0) / 260.0, 2.0))
+	var x := lerpf(upper, 260.0 + 65.0 * sin(z / 180.0), smoothstep(2550.0, 2950.0, z))
+	x = lerpf(x, 330.0 + 45.0 * sin(z / 240.0 + 1.0), smoothstep(4600.0, 5000.0, z))
+	return lerpf(x, 70.0, smoothstep(6400.0, 7300.0, z))
 
 static func height_at(x: float, distance: float) -> float:
 	var z := distance / DISTANCE_SCALE
 	# No speed cap or time padding: over 3.1 km of vertical descent to the finish.
 	var h := 3300.0 - 0.34 * distance
-	h += 8.0 * sin(z / 240.0) + 2.0 * sin(z / 64.0)
-	h += 0.00019 * x * x + 4.0 * sin(x / 110.0) * sin(z / 180.0)
+	# The start is a true summit: the ground falls away behind the rider and off
+	# both shoulders of the summit ridge before the face opens into its bowl.
+	h -= maxf(0.0, -distance - 4.0) * 0.95
+	var summit := 1.0 - smoothstep(0.0, 1000.0, z)
+	h += (0.00019 - 0.00075 * summit) * x * x
+	# Pitches and benches: the grade swings between about 0.24 and 0.44 instead of
+	# one constant ramp (steep off the top), and the benches curve across the face.
+	h -= 26.0 * sin(z / 400.0 + 0.5 * sin(x / 360.0)) + 10.0 * sin(z / 170.0 + x / 300.0 + 1.3)
+	h += 4.0 * sin(x / 110.0) * sin(z / 180.0)
+	# Rolling wind-drift and moraine relief, strongest in the broken mountain.
+	var broken_zone := band(z, 4750, 6370, 200)
+	h += _relief.get_noise_2d(x, distance) * (3.2 + 2.0 * broken_zone - 1.2 * summit)
+	# Natural drainages (see west_line/east_line): banked gullies to carve.
+	var forest_zone := band(z, 2800, 4700, 150)
+	var gully_depth := lerpf(7.0 + 3.0 * sin(z / 190.0), 4.5, forest_zone) * smoothstep(120.0, 420.0, z)
+	var gully_width := lerpf(38.0, 22.0, forest_zone) + 45.0 * smoothstep(6600.0, 7400.0, z)
+	h -= gully_depth * exp(-pow((x - west_line(z)) / gully_width, 2.0))
+	h -= gully_depth * (1.0 - band(z, 4900, 6450, 250)) * exp(-pow((x - east_line(z)) / gully_width, 2.0))
 	# Broad summit, then a transverse gorge with BOTH west/east snow shoulders.
 	var spur := exp(-pow((x - 120.0) / 22.0, 4.0))
 	var gorge_z := z - 24.0 * sin(x / 85.0)
 	var gorge := lerpf(band(gorge_z, 1480, 1570, 18), band(gorge_z, 1494, 1514, 8), spur)
 	h -= 100.0 * band(x, -215, 215, 35) * gorge
 	# A real snow lip on the narrow rock spur supports a difficult ollie shortcut.
-	h += 6.0 * exp(-pow((gorge_z - 1479.0) / 14.0, 2.0)) * exp(-pow((x - 120.0) / 25.0, 4.0))
+	h += 4.5 * exp(-pow((gorge_z - 1486.0) / 13.0, 2.0)) * exp(-pow((x - 120.0) / 25.0, 4.0))
+	# The far rim sits a little lower than the take-off and the snow beyond it falls
+	# away steeply, so a committed jump lands with the slope instead of onto a shelf.
+	h -= (4.0 * smoothstep(1508.0, 1524.0, gorge_z) + 8.0 * smoothstep(1524.0, 1580.0, gorge_z)) * (1.0 - smoothstep(1600.0, 1720.0, gorge_z)) * exp(-pow((x - 120.0) / 34.0, 4.0))
 	# Cliff region's tilted rock buttress. Routes around both ends and a narrow chute.
 	var buttress := band(x, -70, 330, 55) * (1.0 - exp(-pow((x - 120.0) / 19.0, 4.0)))
 	h += 58.0 * buttress * exp(-pow((z - 2310.0) / 72.0, 4.0))
@@ -50,8 +98,7 @@ static func height_at(x: float, distance: float) -> float:
 	# A broken left-side escarpment demands a traverse before dropping to lower forest.
 	h -= 85.0 * band(x, -470, 85, 30) * band(z - 18.0*sin(x/95.0), 4220, 4310, 16)
 	# Broken mountain: large gullies, spines and natural launches, blending into final bowl.
-	var broken := band(z, 4750, 6370, 200)
-	h += broken * (12.0 * sin(x / 72.0 + z / 125.0) + 4.0 * sin(z / 43.0))
+	h += broken_zone * (12.0 * sin(x / 72.0 + z / 125.0) + 4.0 * sin(z / 43.0))
 	# The first broken cut pinches to a narrow gap near x=170 with a kicker on its
 	# uphill lip: a visible, committing gap-jump shortcut versus the long west detour.
 	var pinch := exp(-pow((x - 170.0) / 26.0, 4.0))
@@ -108,6 +155,7 @@ func _ready() -> void:
 	add_child(atmosphere)
 	terrain_material = ShaderMaterial.new()
 	terrain_material.shader = preload("res://shaders/terrain.gdshader")
+	terrain_material.set_shader_parameter("sun_direction", SnowAtmosphere.SUN_DIRECTION)
 	tree_material = ShaderMaterial.new()
 	tree_material.shader = preload("res://shaders/tree.gdshader")
 	rock_material = ShaderMaterial.new()
@@ -267,9 +315,27 @@ func batch(mesh: Mesh, transforms: Array[Transform3D], custom: Array[Color], mat
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(instance)
 
+## Tree density 0..1 for a spot: nothing on the summit, wind-stunted krummholz
+## near the treeline, scattered stands through the cliffs, thickets and glades in
+## the forest, sparse survivors in the broken mountain, timbered valley flanks.
+func tree_density(x: float, z: float) -> float:
+	var lz := z / DISTANCE_SCALE
+	var altitude := 0.07 * smoothstep(350.0, 1100.0, lz) + 0.1 * smoothstep(1100.0, 2400.0, lz)
+	altitude += 0.83 * band(lz, 2800, 4700, 250)
+	altitude -= 0.02 * smoothstep(4700.0, 5200.0, lz)
+	var flanks := smoothstep(6400.0, 6900.0, lz) * smoothstep(250.0, 380.0, absf(x)) * 0.45
+	var clump := smoothstep(-0.2, 0.3, clump_noise.get_noise_2d(x, z))
+	return clampf(altitude * (0.22 + 0.78 * clump) + flanks * (0.4 + 0.6 * clump), 0.0, 1.0)
+
+## Rocks gather into gardens and moraines rather than an even scatter.
+func rock_density(x: float, z: float) -> float:
+	var lz := z / DISTANCE_SCALE
+	var region_amount := 0.18 + 0.6 * band(lz, 1100, 2800, 200) + 0.5 * band(lz, 4700, 6500, 200) - 0.08 * band(lz, 2800, 4700, 200)
+	return region_amount * smoothstep(0.05, 0.45, rock_noise.get_noise_2d(x, z))
+
 func make_scenery(start: float) -> void:
-	# Hazard layout uses the same seeded sequence as pass 2 so route knowledge holds;
-	# a second generator only decides looks (variant, yaw, snow load).
+	# One seeded generator decides hazard layout per chunk (course massif_v3);
+	# a second only decides looks (variant, yaw, snow load).
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 74021 + int(start) * 13
 	var looks := RandomNumberGenerator.new()
@@ -286,32 +352,24 @@ func make_scenery(start: float) -> void:
 	stones.name = "Rocks%d" % int(start)
 	stones.collision_layer = 2
 	stones.set_meta("hazard", "rock")
-	var geo_start := start / DISTANCE_SCALE
-	var forest := geo_start >= 2800 and geo_start < 4700
-	var count := 280 if forest else (40 if geo_start > 1000 else 4)
 	var planted: Array[Vector4] = []
-	for i in count:
+	for i in 720:
 		var z := rng.randf_range(start, start + 200)
-		var x := rng.randf_range(-495, 495)
-		if absf(x-120) < 25 and z > 1430*DISTANCE_SCALE and z < 1600*DISTANCE_SCALE: continue
+		var x := rng.randf_range(-505, 505)
+		var roll := rng.randf()
+		var size_roll := rng.randf()
+		if roll > tree_density(x, z): continue
+		var lz := z / DISTANCE_SCALE
+		if absf(x-120) < 25 and lz > 1430 and lz < 1600: continue
 		if gap_line(x, z): continue
-		var lane_a := -180.0 + 95.0 * sin((z / DISTANCE_SCALE - 2800) / 300.0)
-		var lane_b := 260.0 + 65.0 * sin(z / DISTANCE_SCALE / 180.0)
-		# Two winding forest corridors. Neither is a straight central protected lane.
-		if forest and (absf(x - lane_a) < 20 or absf(x - lane_b) < 15): continue
-		if normal_at(x, z).y < 0.83 or z < 150 or z > FINISH - 150: continue
-		var s := rng.randf_range(1, 2.1) if forest else rng.randf_range(0.8, 1.5)
+		# The two drainages stay open: creek-bed corridors through the forest.
+		if absf(x - west_line(lz)) < 20.0 or absf(x - east_line(lz)) < 16.0: continue
+		if normal_at(x, z).y < 0.83 or z < 150 or z > FINISH - 60: continue
+		if z > FINISH - 320 and absf(x) < 75.0: continue
+		# Stunted near the treeline, tall in the forest and valley.
+		var grown := smoothstep(900.0, 3000.0, lz)
+		var s := lerpf(0.45, 1.0, grown) + size_roll * lerpf(0.4, 1.1, grown)
 		planted.append(Vector4(x, height_at(x, z), z, s))
-	# Final-descent valley: timbered flanks frame an open, fast centre bowl.
-	if geo_start >= 6500:
-		var valley := RandomNumberGenerator.new()
-		valley.seed = 5150 + int(start)
-		for i in 70:
-			var z := valley.randf_range(start, start + 200)
-			var side := -1.0 if valley.randf() < 0.5 else 1.0
-			var x := side * valley.randf_range(330, 505)
-			if normal_at(x, z).y < 0.83 or z < 150 or z > FINISH - 40: continue
-			planted.append(Vector4(x, height_at(x, z), z, valley.randf_range(0.9, 1.8)))
 	for t in planted:
 		var at := Vector3(t.x, t.y, t.z)
 		var s := t.w
@@ -329,17 +387,27 @@ func make_scenery(start: float) -> void:
 		trees.add_child(collision)
 		add_hazard(at, cylinder.radius, true)
 		tree_count += 1
-	for i in (28 if geo_start > 1100 and geo_start < 6500 else 7):
+	for i in 170:
 		var z := rng.randf_range(start, start + 200)
-		var x := rng.randf_range(-490, 490)
-		if absf(x-120) < 40 and z > 1430*DISTANCE_SCALE and z < 1600*DISTANCE_SCALE: continue
+		var x := rng.randf_range(-500, 500)
+		var roll := rng.randf()
+		var size_roll := rng.randf()
+		var spin := rng.randf() * TAU
+		if roll > rock_density(x, z): continue
+		var lz := z / DISTANCE_SCALE
+		if absf(x-120) < 40 and lz > 1430 and lz < 1600: continue
 		if gap_line(x, z): continue
 		if normal_at(x, z).y < 0.75 or z < 180 or z > FINISH - 120: continue
-		var s := rng.randf_range(1.3, 4.0)
-		if geo_start > 1100 and geo_start < 2800: s *= 2.5
+		if z > FINISH - 420 and absf(x) < 90.0: continue # the finish funnel stays clear
+		# A few house-sized erratics among mostly modest boulders.
+		var s := 1.2 + pow(size_roll, 2.2) * 5.5
+		if lz > 1100 and lz < 2800: s *= 1.6
 		var scale_vec := Vector3(s * 1.3, s, s)
-		var rotation_basis := Basis.from_euler(Vector3(0.15, rng.randf() * TAU, 0.1))
+		var rotation_basis := Basis.from_euler(Vector3(0.15, spin, 0.1))
 		var at := Vector3(x, height_at(x, z) + s * 0.2, z)
+		# Boulders never touch or pinch: there is always a rideable gap between
+		# them (and trunks), so rock gardens cannot trap a slow or fallen rider.
+		if not hazards_near(at, s * 1.6 + 3.5).is_empty(): continue
 		add_rock(stones, rocks, rock_custom, looks.randi() % 4, rotation_basis, scale_vec, at, looks)
 	if trees.get_child_count() > 0: add_child(trees)
 	else: trees.free()

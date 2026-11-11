@@ -65,6 +65,9 @@ var tumble_basis := Basis()
 var tumble_origin := Vector3.ZERO
 var tumble_hit_cooldown := 0.0
 var getup_started := false
+var wedged := 0
+var leaning_normal := Vector3.ZERO
+var leaning_time := 10.0
 var _rng := RandomNumberGenerator.new()
 var _ray := PhysicsRayQueryParameters3D.new()
 
@@ -326,13 +329,14 @@ func recovery_point(at: Vector3, normal: Vector3) -> Vector3:
 	if side.length_squared() < 0.5:
 		side = Vector3.RIGHT
 	var base := at + normal * 3.0 - Vector3(0, 0, 3)
-	for offset in [3.0, -3.0, 6.0, -6.0, 9.0, -9.0]:
-		var candidate: Vector3 = base + side * offset
-		candidate.y = SnowMountain.height_at(candidate.x, candidate.z) + 0.72
-		if absf(candidate.y - at.y) > 5:
-			continue
-		if standable(candidate):
-			return candidate
+	for back in [0.0, 5.0]:
+		for offset in [3.0, -3.0, 6.0, -6.0, 9.0, -9.0, 13.0, -13.0]:
+			var candidate: Vector3 = base + side * offset - Vector3(0, 0, back)
+			candidate.y = SnowMountain.height_at(candidate.x, candidate.z) + 0.72
+			if absf(candidate.y - at.y) > 6:
+				continue
+			if standable(candidate):
+				return candidate
 	return safe_position
 
 func standable(candidate: Vector3) -> bool:
@@ -342,7 +346,18 @@ func standable(candidate: Vector3) -> bool:
 	probe.shape = (get_child(0) as CollisionShape3D).shape
 	probe.collision_mask = 2
 	probe.transform = Transform3D(Basis(), candidate)
-	return get_world_3d().direct_space_state.intersect_shape(probe, 1).is_empty()
+	var space := get_world_3d().direct_space_state
+	if not space.intersect_shape(probe, 1).is_empty():
+		return false
+	# Room to ride away: an unobstructed 7 m slide down the fall line, so nobody
+	# stands up boxed into a notch between boulders or nose-first against a trunk.
+	var n := SnowMountain.normal_at(candidate.x, candidate.z)
+	var fall := Vector3(n.x, 0, n.z)
+	fall = fall.normalized() if fall.length() > 0.05 else Vector3(0, 0, 1)
+	var to := candidate + fall * 7.0
+	to.y = SnowMountain.height_at(to.x, to.z) + 0.72
+	probe.motion = to - candidate
+	return space.cast_motion(probe)[0] >= 0.99
 
 ## Where the rider stands up: where the tumble actually came to rest when that
 ## spot is safe and close; otherwise the conservative safe/recovery point.
@@ -384,6 +399,7 @@ func _physics_process(delta: float) -> void:
 		fatigue[trick] = maxf(0.0, fatigue[trick] - (T.GLOBAL_FATIGUE_DECAY if trick == "_all" else T.FATIGUE_DECAY) * delta)
 	land_time += delta
 	pop_time += delta
+	leaning_time += delta
 	if recovery > 0.0:
 		recovery = maxf(0.0, recovery - delta)
 		velocity = Vector3.ZERO
@@ -419,7 +435,18 @@ func _physics_process(delta: float) -> void:
 	var brake := brake_input
 	var tuck := tuck_input
 	if Input.is_action_just_pressed("jump") and not just_pushed_off:
-		jump_armed = true
+		if ground and speed < T.PUSH_MAX_SPEED:
+			# Nearly stopped (flat bench, wedged against a rock, facing uphill): A is a
+			# push-off again, a small hop in the direction the board points.
+			var push_dir := forward()
+			if leaning_time < 0.5:
+				# Leaning on a trunk or boulder: kick away from it and along it.
+				push_dir = (leaning_normal * 0.9 + push_dir.slide(leaning_normal)).normalized()
+			velocity += push_dir.slide(get_floor_normal()).normalized() * T.PUSH_SPEED + get_floor_normal() * 1.6
+			pop_time = 0.0
+			sound_event.emit("push", 0.5)
+		else:
+			jump_armed = true
 	if ground:
 		since_ground = 0.0
 		grounded_normal = get_floor_normal()
@@ -510,7 +537,16 @@ func _physics_process(delta: float) -> void:
 	# its world velocity still points downward; floor snap must not glue it back.
 	floor_snap_length = 0.0 if pop_time < 0.2 else 0.85
 	var before := velocity
+	var from := position
 	move_and_slide()
+	# Trimesh creases can very rarely pin the capsule in place while it still has
+	# full velocity (the solver reports the same snow contact every slide). Lift the
+	# board a few centimetres, a little more each stuck tick, until it rides free.
+	if before.length() > 3.0 and position.distance_to(from) < before.length() * delta * 0.15 and is_on_floor():
+		wedged += 1
+		position += get_floor_normal() * minf(0.03 * wedged, 0.25)
+	else:
+		wedged = 0
 	var snow_contacts_only := true
 	var brush_normal := Vector3.ZERO
 	for i in get_slide_collision_count():
@@ -521,6 +557,8 @@ func _physics_process(delta: float) -> void:
 			var impact := maxf(0.0, -before.dot(hit.get_normal()))
 			if impact < T.BRUSH_IMPACT:
 				brush_normal = hit.get_normal()
+				leaning_normal = Vector3(brush_normal.x, 0, brush_normal.z).normalized()
+				leaning_time = 0.0
 				continue
 			var kind := str(object.get_meta("hazard"))
 			last_crash_reason = kind

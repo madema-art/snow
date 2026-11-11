@@ -26,7 +26,7 @@ void fragment() {
 	float tuft = vnoise(wpos.xz * 3.0 + wpos.y * 2.0);
 	green *= 0.8 + 0.4 * tuft;
 	vec3 base = mix(bark * (0.8 + 0.3 * vnoise(vec2(wpos.y * 4.0, atan(wpos.x, wpos.z) * 3.0))), green, foliage);
-	float s = clamp(vcol.a * inst.r * 1.25 + (vnoise(wpos.xz * 1.7 + wpos.y) - 0.5) * 0.8, 0.0, 1.0);
+	float s = clamp(vcol.a * inst.r * 1.3 + (vnoise(wpos.xz * 2.4 + wpos.y * 1.6) - 0.5) * 0.35, 0.0, 1.0);
 	s = smoothstep(0.35, 0.65, s);
 	ALBEDO = mix(base, snow, s);
 	ROUGHNESS = mix(0.85, 0.7, s);

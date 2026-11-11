@@ -76,6 +76,16 @@ ffmpeg -i work/movie/music.avi -vn work/movie/music.wav && python3 tools/analyze
 
 Expect the opener at launch, silence while paused (4–7 s), resume at the same position, then a crossfade.
 
+## 7c. Mix balance (music vs effects bed)
+
+```bash
+xvfb-run -a -s "-screen 0 160x90x24" godot --path . --windowed --resolution 160x90 --fixed-fps 60 --rendering-driver opengl3 --write-movie work/movie/mix_sfx.avi --script res://tests/movie_mix.gd -- --mute-music
+xvfb-run -a -s "-screen 0 160x90x24" godot --path . --windowed --resolution 160x90 --fixed-fps 60 --rendering-driver opengl3 --write-movie work/movie/mix_music.avi --script res://tests/movie_mix.gd -- --mute-sfx
+ffmpeg -nostats -ss 22 -i work/movie/mix_sfx.avi -af ebur128 -f null -     # integrated LUFS at speed
+```
+
+A real 40 s tucked descent (mountain hidden so software GL is fast), recorded once per half of the mix. Rule: at speed the effects bed must sit at least 8 dB below the music (pass 4: −28.6 vs −19.9 LUFS). When songs are added run `tools/measure_music.sh` and update the LOUDNESS table in `scripts/music.gd`.
+
 ## 8. Render cost / 4K probe
 
 ```bash

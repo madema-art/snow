@@ -1,10 +1,10 @@
 class_name SnowAtmosphere
 extends Node3D
-## Daylight, sky, haze and exposure. Low raking sun from ahead-right of the fall
-## line models every roll and lip with long shadows; cool sky ambient keeps
+## Daylight, sky, haze and exposure. A low sun rakes ACROSS the fall line so every
+## roll, gully bank and wind ripple is modelled by light and long shadows; cool sky ambient keeps
 ## shadowed snow blue-white and readable instead of grey. Atmospheric depth fog
 ## sells kilometres of scale without hiding hazards within riding distance.
-const SUN_DIRECTION := Vector3(-0.45, 0.48, 0.75) # toward the sun (shared by shaders)
+const SUN_DIRECTION := Vector3(-0.904, 0.425, 0.053) # toward the sun (shared by shaders)
 var environment: Environment
 var sun: DirectionalLight3D
 
@@ -21,7 +21,7 @@ func _ready() -> void:
 	# Mostly sky light, partly a neutral pale fill: blue-white shadows, not saturated blue.
 	environment.ambient_light_color = Color("c9d3de")
 	environment.ambient_light_sky_contribution = 0.6
-	environment.ambient_light_energy = 0.6
+	environment.ambient_light_energy = 0.5
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
 	environment.tonemap_exposure = 0.66
@@ -51,7 +51,7 @@ func _ready() -> void:
 	sun.name = "Sun"
 	sun.basis = Basis.looking_at(-SUN_DIRECTION.normalized(), Vector3.UP)
 	sun.light_color = Color("fff1dc")
-	sun.light_energy = 1.3
+	sun.light_energy = 1.75
 	sun.light_angular_distance = 0.6
 	sun.shadow_enabled = true
 	sun.shadow_bias = 0.04

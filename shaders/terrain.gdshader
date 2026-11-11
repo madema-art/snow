@@ -12,7 +12,7 @@ uniform vec3 rock_dark : source_color = vec3(0.16, 0.155, 0.15);
 uniform vec3 rock_light : source_color = vec3(0.42, 0.40, 0.37);
 uniform vec2 wind_dir = vec2(0.92, 0.38);
 uniform float detail_strength = 1.0;
-uniform vec3 sun_direction = vec3(-0.45, 0.48, 0.75);
+uniform vec3 sun_direction = vec3(-0.904, 0.425, 0.053);
 
 varying vec3 wpos;
 varying vec4 surf;
@@ -55,7 +55,7 @@ void fragment() {
 	// Rock strata: horizontal bands warped by noise, darker in cracks.
 	float strata = sin(wpos.y * 1.3 + fbm3(p * 0.04) * 9.0) * 0.5 + 0.5;
 	float crack = smoothstep(0.75, 0.95, vnoise(vec2(wpos.y * 2.0, dot(p, vec2(0.7, 0.7)) * 0.35)));
-	vec3 rock_col = mix(rock_dark, rock_light, strata * 0.7 + breakup * 0.3) * (1.0 - crack * 0.45);
+	vec3 rock_col = mix(rock_dark, rock_light, strata * 0.3 + breakup * 0.6) * (1.0 - crack * 0.45);
 	rock_col *= mix(vec3(1.0), vec3(1.05, 0.98, 0.9), vnoise(p * 0.02));
 	// Snow on rock ledges facing up.
 	float ledge_snow = smoothstep(0.62, 0.86, nw.y + (vnoise(p * 0.7) - 0.5) * 0.3);

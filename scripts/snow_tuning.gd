@@ -35,6 +35,10 @@ const ICE_RESISTANCE := -0.15
 const POWDER_RESISTANCE := 0.75
 const POWDER_DRAG := 0.12
 
+# --- Standing push ---
+const PUSH_MAX_SPEED := 2.2      # Below this speed A pushes off instead of ollieing.
+const PUSH_SPEED := 3.2
+
 # --- Ollie / air ---
 const OLLIE_SPEED := 8.8           # Tap ollie (unchanged). Holding A preloads up to:
 const OLLIE_PRELOAD_BONUS := 0.3   # +30% pop after a full preload crouch.
