@@ -15,13 +15,28 @@ extends Node
 ## - New .mp3/.ogg files dropped into the folder are discovered automatically, in
 ##   the editor (source files, imported or not yet imported) and in exported builds
 ##   (ResourceLoader.list_directory / ".import" entries).
-## - Gentle ducking under crashes and nitro ignition keeps key gameplay sounds clear.
+## - Songs are level-matched (LOUDNESS table) and lead the mix; only a brief,
+##   small dip under crashes.
 ## Nothing is ever displayed: no titles, no controls, no HUD.
 const OPENING_TRACK := "Alpine Shift (Take 2) (Remix).mp3"
 const EXTENSIONS := ["mp3", "ogg"]
 const CROSSFADE := 2.5
-const MUSIC_BUS_DB := -8.0   # Tracks measure -14..-20 LUFS; SFX bed ~-18 LUFS.
-const DUCK_DB := -5.0
+const MUSIC_BUS_DB := -3.0   # Music leads: ~-19 LUFS vs a ~-29 LUFS wind/snow bed at speed.
+const DUCK_DB := -2.5        # Only a brief dip under crashes so impacts still land.
+const TARGET_LUFS := -16.0
+const DEFAULT_LUFS := -16.0  # Assumed for songs without a measurement.
+## Integrated loudness per song (ffmpeg ebur128; see tools/measure_music.sh) so
+## quiet and loud masters play at the same level. Purely a playback gain: the
+## files themselves are never altered. Unlisted songs use DEFAULT_LUFS.
+const LOUDNESS := {
+	"Alpine Shift (Take 2) (1).mp3": -15.8,
+	"Alpine Shift (Take 2) (Remix).mp3": -14.1,
+	"Alpine Shift (Take 2).mp3": -14.3,
+	"Half-time Beat Cover.mp3": -17.0,
+	"Heavier Half-time Beat Cover.mp3": -20.0,
+	"Powder Rush (Take 1).mp3": -17.4,
+	"Powder Rush with Melodic Synth Leads.mp3": -17.1,
+}
 var music_dir := "res://assets/music/"
 var rider: SnowRider
 var tracks: Array[String] = []
@@ -29,6 +44,7 @@ var bag: Array[String] = []
 var history: Array[String] = []
 var current := ""
 var players: Array[AudioStreamPlayer] = []
+var gains: Array[float] = [0.0, 0.0]
 var active := 0
 var fading := false
 var fade := 1.0
@@ -151,11 +167,15 @@ func play_now(path: String) -> void:
 		return
 	var p := players[active]
 	p.stream = stream
-	p.volume_db = 0.0
+	gains[active] = track_gain_db(path)
+	p.volume_db = gains[active]
 	p.play()
 	p.stream_paused = paused
 	current = path
 	history.append(path)
+
+static func track_gain_db(path: String) -> float:
+	return clampf(TARGET_LUFS - float(LOUDNESS.get(path.get_file(), DEFAULT_LUFS)), -6.0, 6.0)
 
 func crossfade_to(path: String) -> void:
 	var stream := load_track(path)
@@ -166,6 +186,7 @@ func crossfade_to(path: String) -> void:
 	active = 1 - active
 	var p := players[active]
 	p.stream = stream
+	gains[active] = track_gain_db(path)
 	p.volume_db = -80.0
 	p.play()
 	p.stream_paused = paused
@@ -186,7 +207,7 @@ func finish_fade() -> void:
 	fading = false
 	fade = 1.0
 	players[1 - active].stop()
-	players[active].volume_db = 0.0
+	players[active].volume_db = gains[active]
 
 func set_paused(value: bool) -> void:
 	paused = value
@@ -199,8 +220,8 @@ func current_title() -> String:
 
 # ------------------------------------------------------------------ runtime
 func _on_rider_event(kind: String, strength: float) -> void:
-	if kind in ["crash", "fatal", "boost"]:
-		duck_hold = 1.2 if kind == "boost" else 1.0 + strength
+	if kind in ["crash", "fatal"]:
+		duck_hold = 0.6 + strength * 0.6
 
 func _process(delta: float) -> void:
 	if paused or tracks.is_empty():
@@ -210,8 +231,8 @@ func _process(delta: float) -> void:
 	var p := players[active]
 	if fading:
 		fade = minf(1.0, fade + delta / CROSSFADE)
-		players[1 - active].volume_db = linear_to_db(maxf(cos(fade * PI * 0.5), 0.0001))
-		p.volume_db = linear_to_db(maxf(sin(fade * PI * 0.5), 0.0001))
+		players[1 - active].volume_db = gains[1 - active] + linear_to_db(maxf(cos(fade * PI * 0.5), 0.0001))
+		p.volume_db = gains[active] + linear_to_db(maxf(sin(fade * PI * 0.5), 0.0001))
 		if fade >= 1.0:
 			finish_fade()
 	elif p.stream:

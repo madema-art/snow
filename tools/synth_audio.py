@@ -218,45 +218,37 @@ def skid():
 
 
 def wind_base():
+    # Mountain air: a soft, dark, slowly breathing bed. No hiss, no whistle.
     n = int(8.0 * SR)
-    low = shaped_noise(n, lambda f: band(f, 25, 380, 1.3) * (f / 100) ** -0.6, 151, channels=2)
-    swell = np.stack([periodic_lfo(n, 0.35, 152, 0.55), periodic_lfo(n, 0.35, 153, 0.55)], axis=-1)
-    high = shaped_noise(n, lambda f: band(f, 600, 3500, 1.2), 154, channels=2) * 0.05
-    x = low * swell + high * swell ** 2
-    write_wav("wind_base", normalise(x, -4), loop=True)
+    low = shaped_noise(n, lambda f: band(f, 30, 240, 1.3) * (f / 100) ** -0.7, 151, channels=2)
+    swell = np.stack([periodic_lfo(n, 0.2, 152, 0.3), periodic_lfo(n, 0.2, 153, 0.3)], axis=-1)
+    write_wav("wind_base", normalise(low * swell, -6), loop=True)
 
 
 def wind_rush():
+    # Speed air: smooth and dark (rolled off above ~1.5 kHz), no flutter or
+    # tonal resonances, so it reads as air moving past rather than white noise.
     n = int(6.0 * SR)
-    rush = shaped_noise(n, lambda f: band(f, 140, 7000, 1.1) * (f / 800) ** -0.45, 161, channels=2)
-    mod = np.stack([periodic_lfo(n, 1.2, 162, 0.3), periodic_lfo(n, 1.3, 163, 0.3)], axis=-1)
-    write_wav("wind_rush", normalise(rush * mod, -3), loop=True)
-
-
-def wind_whistle():
-    n = int(6.0 * SR)
-    # Resonant whistles across helmet/goggles plus fast flutter at speed.
-    tones = shaped_noise(n, lambda f: band(f, 500, 4000, 2.0) * (peak(f, 1150, 30, 6) + peak(f, 1780, 40, 4) - 1.0), 171, channels=2)
-    flutter = np.stack([periodic_lfo(n, 11.0, 172, 0.5), periodic_lfo(n, 13.0, 173, 0.5)], axis=-1)
-    roar = shaped_noise(n, lambda f: band(f, 60, 900, 1.3), 174, channels=2)
-    x = tones * 0.6 * flutter + roar * 0.6 * flutter
-    write_wav("wind_whistle", normalise(x, -3), loop=True)
+    rush = shaped_noise(n, lambda f: band(f, 90, 1500, 1.0) * (f / 400) ** -0.7, 161, channels=2)
+    mod = np.stack([periodic_lfo(n, 0.4, 162, 0.12), periodic_lfo(n, 0.45, 163, 0.12)], axis=-1)
+    write_wav("wind_rush", normalise(rush * mod, -6), loop=True)
 
 
 def cloth():
+    # Jacket ripple: soft low-mid fabric movement, only audible in the air.
     n = int(3.0 * SR)
     r = rng(181)
     flap = np.zeros(n)
     t = 0
     while t < n:
-        period = int(SR / r.uniform(9, 17))
-        length = int(period * r.uniform(0.3, 0.6))
+        period = int(SR / r.uniform(6, 10))
+        length = int(period * r.uniform(0.4, 0.7))
         idx = (np.arange(length) + t) % n
         flap[idx] += np.hanning(length) * r.uniform(0.5, 1.0)
         t += period
-    fabric = shaped_noise(n, lambda f: band(f, 180, 3000, 1.3), 182)
-    x = fabric * (0.25 + flap)
-    write_wav("cloth_flutter", normalise(x, -3), loop=True)
+    fabric = shaped_noise(n, lambda f: band(f, 150, 1400, 1.3), 182)
+    x = fabric * (0.4 + flap)
+    write_wav("cloth_flutter", normalise(x, -6), loop=True)
 
 
 def nitro_loop():
@@ -519,7 +511,7 @@ def branch_brush():
 
 def main():
     snow_packed(); snow_powder(); snow_ice(); carve(); skid()
-    wind_base(); wind_rush(); wind_whistle(); cloth(); nitro_loop()
+    wind_base(); wind_rush(); cloth(); nitro_loop()
     push(); ollie(); landing("land_soft", 0.25, 401); landing("land_hard", 1.0, 411); land_sketchy()
     crash("crash_minor", 0, 501); crash("crash_moderate", 1, 511); crash("crash_severe", 2, 521); crash("fatal", 3, 531)
     for i in range(3):

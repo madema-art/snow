@@ -15,7 +15,7 @@ void fragment() {
 	float d0 = fbm3(q);
 	float dx = fbm3(q + vec2(0.05, 0.0));
 	float dz = fbm3(q + vec2(0.0, 0.05));
-	nw = normalize(nw - vec3(dx - d0, 0.0, dz - d0) * 9.0);
+	nw = normalize(nw - vec3(dx - d0, 0.0, dz - d0) * 5.0);
 	float n = fbm3(wpos.xz * 0.004);
 	float gully = vnoise(vec2(wpos.x * 0.02 + wpos.z * 0.003, wpos.y * 0.004));
 	float s = smoothstep(0.68, 0.84, nw.y + (n - 0.5) * 0.4 + (gully - 0.5) * 0.3);

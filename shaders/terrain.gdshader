@@ -12,7 +12,7 @@ uniform vec3 rock_dark : source_color = vec3(0.16, 0.155, 0.15);
 uniform vec3 rock_light : source_color = vec3(0.42, 0.40, 0.37);
 uniform vec2 wind_dir = vec2(0.92, 0.38);
 uniform float detail_strength = 1.0;
-uniform vec3 sun_direction = vec3(-0.45, 0.48, 0.75);
+uniform vec3 sun_direction = vec3(-0.904, 0.425, 0.053);
 
 varying vec3 wpos;
 varying vec4 surf;

@@ -7,8 +7,8 @@ extends Node3D
 ## cross-faded by the SAME surface data the physics uses. Leaving the ground cuts
 ## every contact layer within ~40 ms; air rush and clothing flutter take over;
 ## the landing is a layered sub-thump + slap + crunch and the snow resumes.
-## Wind: quiet summit ambience, speed rush, high-speed whistle/flutter, gusts that
-## follow exposure, and forest shelter via a low-pass on MountainWind.
+## Wind: a soft, dark summit bed and a smooth speed rush (no whistles or hiss),
+## gentle exposure gusts, and forest shelter via a low-pass on MountainWind.
 ## Nitro: ignition impact -> resonant build -> sustained "singing ice" core ->
 ## depletion glide, plus a mechanical sputter when empty.
 ## Buses: Master (limiter) <- SFX (glue compressor) <- Board / MountainWind /
@@ -37,11 +37,12 @@ var rng := RandomNumberGenerator.new()
 
 const LOOPS := {
 	# name: [bus, gain, smoothing rate (1/s)]
-	"snow_packed": ["Board", 0.85, 30.0], "snow_powder": ["Board", 0.9, 30.0], "snow_ice": ["Board", 0.75, 30.0],
-	"carve": ["Board", 0.8, 18.0], "skid": ["Board", 0.85, 14.0],
-	"wind_base": ["MountainWind", 0.55, 2.0], "wind_rush": ["MountainWind", 0.9, 5.0],
-	"wind_whistle": ["MountainWind", 0.55, 4.0], "cloth_flutter": ["Board", 0.5, 8.0],
-	"nitro_loop": ["Nitro", 0.8, 9.0],
+	# Beds are deliberately modest: the soundtrack leads, events punch through.
+	"snow_packed": ["Board", 0.24, 30.0], "snow_powder": ["Board", 0.27, 30.0], "snow_ice": ["Board", 0.24, 30.0],
+	"carve": ["Board", 0.32, 18.0], "skid": ["Board", 0.45, 14.0],
+	"wind_base": ["MountainWind", 0.3, 1.5], "wind_rush": ["MountainWind", 0.27, 3.0],
+	"cloth_flutter": ["Board", 0.16, 6.0],
+	"nitro_loop": ["Nitro", 0.6, 9.0],
 }
 const ONE_SHOTS := ["push", "ollie", "land_soft", "land_hard", "land_sketchy", "crash_minor", "crash_moderate",
 	"crash_severe", "fatal", "tumble_0", "tumble_1", "tumble_2", "getup", "nitro_ignite", "nitro_deplete",
@@ -50,7 +51,7 @@ const ONE_SHOTS := ["push", "ollie", "land_soft", "land_hard", "land_sketchy", "
 func _ready() -> void:
 	rng.seed = 3129
 	gust_noise.seed = 77
-	gust_noise.frequency = 0.08
+	gust_noise.frequency = 0.05
 	gust_noise.fractal_octaves = 2
 	setup_buses()
 	for name in LOOPS.keys() + ONE_SHOTS:
@@ -96,20 +97,24 @@ func setup_buses() -> void:
 		limiter.ceiling_db = -0.8
 		AudioServer.add_bus_effect(master, limiter)
 	var sfx := ensure_bus("SFX", "Master")
-	AudioServer.set_bus_volume_db(sfx, 1.0)
+	AudioServer.set_bus_volume_db(sfx, -4.0)
 	if AudioServer.get_bus_effect_count(sfx) == 0:
 		var glue := AudioEffectCompressor.new()
-		glue.threshold = -16.0
-		glue.ratio = 3.0
+		glue.threshold = -12.0
+		glue.ratio = 2.0
 		glue.attack_us = 8000.0
 		glue.release_ms = 220.0
-		glue.gain = 2.0
+		glue.gain = 0.0
 		AudioServer.add_bus_effect(sfx, glue)
-	ensure_bus("Board", "SFX")
+	var board := ensure_bus("Board", "SFX")
+	if AudioServer.get_bus_effect_count(board) == 0:
+		var soften := AudioEffectLowPassFilter.new()
+		soften.cutoff_hz = 7500.0 # takes the fizz off the snow hiss so it sits under music
+		AudioServer.add_bus_effect(board, soften)
 	var wind := ensure_bus("MountainWind", "SFX")
 	if AudioServer.get_bus_effect_count(wind) == 0:
 		wind_filter = AudioEffectLowPassFilter.new()
-		wind_filter.cutoff_hz = 16000.0
+		wind_filter.cutoff_hz = 5000.0
 		AudioServer.add_bus_effect(wind, wind_filter)
 	else:
 		wind_filter = AudioServer.get_bus_effect(wind, 0)
@@ -213,11 +218,11 @@ func target_levels() -> Dictionary:
 	var slide := maxf(rider.brake_input * minf(1.0, speed / 5.0), clampf(absf(rider.lateral_slip) / 12.0, 0.0, 1.0))
 	t["skid"] = c * slide
 	var air := 1.0 if rider.airborne and running else 0.0
-	var gust := 0.8 + 0.45 * gust_noise.get_noise_1d(clock) * (0.5 + exposure)
-	t["wind_base"] = (0.3 + 0.35 * exposure) * gust * (1.0 - shelter * 0.45)
-	t["wind_rush"] = (pow(r, 1.4) + air * 0.15 * r) * (1.0 - shelter * 0.3)
-	t["wind_whistle"] = (smoothstep(0.5, 1.15, r) + air * 0.3 * r) * (0.7 + 0.3 * gust)
-	t["cloth_flutter"] = pow(r, 1.6) * 0.8 + air * 0.5 * r
+	# Wind: a soft breathing bed plus a dark rush that only builds at real speed.
+	var gust := 1.0 + 0.18 * gust_noise.get_noise_1d(clock) * (0.5 + exposure)
+	t["wind_base"] = (0.35 + 0.4 * exposure) * gust * (1.0 - shelter * 0.5)
+	t["wind_rush"] = (r * r + air * 0.2 * r) * (1.0 - shelter * 0.35)
+	t["cloth_flutter"] = air * r + smoothstep(0.85, 1.3, r) * 0.5
 	t["nitro_loop"] = 1.0 if rider.boosting else 0.0
 	return t
 
@@ -253,8 +258,7 @@ func _physics_process(delta: float) -> void:
 	loops["snow_ice"].pitch_scale = 0.85 + r * 0.55
 	loops["carve"].pitch_scale = 0.8 + r * 0.4
 	loops["skid"].pitch_scale = 0.9 + r * 0.25
-	loops["wind_rush"].pitch_scale = 0.75 + r * 0.45
-	loops["wind_whistle"].pitch_scale = 0.85 + r * 0.3
+	loops["wind_rush"].pitch_scale = 0.85 + r * 0.25
 	loops["cloth_flutter"].pitch_scale = 0.8 + r * 0.5
 	loops["nitro_loop"].pitch_scale = 0.92 + clampf(rider.boost_time, 0.0, 2.0) * 0.06 + r * 0.08
 	update_passbys(delta)
@@ -273,7 +277,7 @@ func update_environment(delta: float) -> void:
 	exposure = lerpf(exposure, target_exposure, 1.0 - exp(-1.2 * delta))
 	shelter = lerpf(shelter, forest, 1.0 - exp(-1.0 * delta))
 	if wind_filter:
-		wind_filter.cutoff_hz = lerpf(16000.0, 2300.0, shelter)
+		wind_filter.cutoff_hz = lerpf(5000.0, 1600.0, shelter)
 	var enclosed := clampf(-convex, 0.0, 1.0)
 	var cliffs := SnowMountain.band(z, 1100, 2800, 200) + SnowMountain.band(z, 4700, 6500, 200) * 0.6
 	if reverb:

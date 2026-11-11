@@ -24,7 +24,7 @@ func go() -> void:
 	var jumped := false
 	var ever_crashed := false
 	for i in 300:
-		if not jumped and rider.position.z > 1492 * SnowMountain.DISTANCE_SCALE and rider.is_on_floor():
+		if not jumped and rider.position.z > 1503 * SnowMountain.DISTANCE_SCALE and rider.is_on_floor():
 			Input.action_press("jump")
 			jumped = true
 		else:
@@ -33,6 +33,7 @@ func go() -> void:
 		await process_frame
 		if i == 20: check(rider.speed > 30,"innocuous terrain seams retain high-speed tangent momentum")
 		if rider.recovery > 0 or run.state != "running": ever_crashed = true
+		if i % 6 == 0 and OS.has_environment("SNOW_TRACE"): print("  spur lz=%.0f y=%.1f v=%s floor=%s jumped=%s reason=%s" % [rider.position.z / 1.2, rider.position.y, rider.velocity, rider.is_on_floor(), jumped, rider.last_crash_reason])
 	check(jumped and not ever_crashed and rider.position.z > 1600*SnowMountain.DISTANCE_SCALE,"actual ollie crosses the narrow gorge spur and lands cleanly")
 	check(rider.nitro > 0,"clean shortcut landing awards real stored nitro")
 	print("TERRAIN FIXTURE position=",rider.position," charge=",rider.nitro)
@@ -60,6 +61,7 @@ func go() -> void:
 		await process_frame
 		if rider.recovery > 0 or run.state != "running": ever_crashed = true
 		top_z = maxf(top_z, rider.position.z)
+		if i % 6 == 0 and OS.has_environment("SNOW_TRACE"): print("  gap lz=%.0f y=%.1f v=%s floor=%s jumped=%s reason=%s" % [rider.position.z / 1.2, rider.position.y, rider.velocity, rider.is_on_floor(), jumped, rider.last_crash_reason])
 	var gap_end := 5512.0 * SnowMountain.DISTANCE_SCALE
 	print("BROKEN GAP FIXTURE position=", rider.position, " charge=", rider.nitro, " crashed=", ever_crashed, " reason=", rider.last_crash_reason)
 	check(jumped and not ever_crashed and rider.position.z > gap_end and SnowMountain.height_at(rider.position.x, rider.position.z) > SnowMountain.height_at(170, lip_world) - 60.0, "broken-mountain pinch gap can be cleared with an ordinary ollie at speed")
