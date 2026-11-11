@@ -51,7 +51,7 @@ func _ready() -> void:
 	tumble_trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	tumble_trail.emission_sphere_radius = 0.6
 	# Plume: a dense arcing core, soft mist that hangs in the air, and glitter.
-	plume_core = particles(520, 1.25, 0.42, Color(0.74, 0.82, 0.94, 0.9))
+	plume_core = particles(520, 1.25, 0.26, Color(0.84, 0.89, 0.97, 0.9))
 	plume_core.emitting = false
 	plume_core.spread = 15.0
 	plume_core.gravity = Vector3(0, -9.8, 0)
@@ -95,9 +95,6 @@ func _ready() -> void:
 	track_root.add_child(live_track)
 	rider.sound_event.connect(_on_event)
 	rider.reset_performed.connect(clear_tracks)
-	for hidden in OS.get_environment("SNOW_FX_HIDE").split(",", false):
-		var node = get(hidden)
-		if node is Node3D: node.visible = false
 
 func particles(amount: int, lifetime: float, size: float, color: Color, glow := false, glow_color := Color(1.0, 0.55, 0.15)) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
@@ -238,7 +235,7 @@ func _physics_process(delta: float) -> void:
 		plume_core.initial_velocity_min = reach * 0.55
 		plume_core.initial_velocity_max = reach * 1.15
 		# Slightly blue-grey so the airborne snow reads against sunlit snow behind it.
-		plume_core.color = Color(0.74, 0.82, 0.94, clampf(0.4 + p * 0.55, 0.0, 0.95))
+		plume_core.color = Color(0.84, 0.89, 0.97, clampf(0.45 + p * 0.5, 0.0, 0.95))
 		plume_core.scale_amount_min = 0.6 + p * 0.5
 		plume_core.scale_amount_max = 1.0 + p * 1.5
 		plume_mist.global_position = origin + throw * 1.2
