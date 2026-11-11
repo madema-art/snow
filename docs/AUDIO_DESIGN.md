@@ -1,6 +1,6 @@
-# Audio design — pass 3
+# Audio design — pass 4
 
-Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 32 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples or third-party assets; the soundtrack is supplied separately by the owner. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
+Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `tools/synth_audio.py` (Python 3 + numpy, fixed seeds) synthesizes all 31 WAVs in `audio/` (44.1 kHz, 16-bit; stereo for wind/nitro). No recordings, samples or third-party assets; the soundtrack is supplied separately by the owner. Loops are built periodically (FFT-shaped noise, integer-cycle oscillators, wrapped grains) so they are seamless, and carry a RIFF `smpl` loop chunk that Godot's importer detects (verified: `loop_mode=1`). Regenerate with `python3 tools/synth_audio.py`, then let Godot re-import.
 
 ## Layers (scripts/snow_audio.gd)
 
@@ -11,10 +11,9 @@ Sound is half of SNOW's sense of speed and danger. Every sound is ORIGINAL: `too
 | Icy chatter | snow_ice | speed x ice (exposed/steep/convex) — irregular edge skipping |
 | Carve rip | carve | edge engagement x speed |
 | Brake skid | skid | brake or sideways slip |
-| Mountain air | wind_base (stereo) | always on, exposure x gusts; forest shelter |
-| Speed rush | wind_rush (stereo) | speed^1.4; pitch with speed |
-| Whistle/flutter | wind_whistle (stereo) | high speed and air |
-| Clothing | cloth_flutter | speed^1.6, stronger in air |
+| Mountain air | wind_base (stereo) | soft, dark, slowly breathing bed (30–240 Hz); exposure and gentle gusts; forest shelter |
+| Speed rush | wind_rush (stereo) | smooth dark air (rolled off above ~1.5 kHz), speed² — only builds at real speed |
+| Clothing | cloth_flutter | soft jacket ripple, in the air and at very high speed only |
 | Nitro core | nitro_loop (stereo) | while boosting; pitch climbs with boost time and speed |
 
 Surface weights are the same `surface_at()` data the physics and terrain shader use, smoothed so transitions cross-fade. Contact layers follow the real ground contact: leaving the snow drops them to silence within ~40 ms (air rush and clothing take over); landing re-engages instantly with a 0.35 s spray boost. Loops start at random offsets and stop when silent.
@@ -38,11 +37,13 @@ Surface weights are the same `surface_at()` data the physics and terrain shader 
 
 ## Mix
 
-Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (+1 dB) glue compressor (-16 dB, 3:1). Board, MountainWind (low-pass 16 kHz → 2.3 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master at −8 dB (owner tracks measure −14 to −20 LUFS; the gameplay mix measures −18.4 LUFS integrated), ducked a further −5 dB for ~1–2 s under crashes and nitro ignition. Everything else pauses with the tree.
+**Playtest rule (pass 4): the music leads; sound effects never cover it; wind is never hissy or whistling.** The pass-3 mix measured the effects bed 7 dB ABOVE the music at speed (−16 vs −23 LUFS) and its wind had resonant whistles and flutter; both were wrong. Now: the whistle layer is deleted, wind is two soft dark layers, every bed gain was cut, and the music was raised and level-matched. Measured through the real mixer at ~30 m/s (`tests/movie_mix.gd`): music ≈ −19.9 LUFS, effects bed ≈ −28.6 LUFS — the music sits ~9 dB above the bed.
+
+Master: hard limiter (-0.8 dB ceiling) prevents clipping. SFX (−4 dB) gentle glue compressor (−12 dB, 2:1, no make-up gain). Board (low-pass 7.5 kHz takes the fizz off snow hiss), MountainWind (low-pass 5 kHz → 1.6 kHz in forest shelter), Impacts (reverb: wetter/larger in cliffs and enclosed gorges, damped in forest) and Nitro (via Impacts). Music → Master at −3 dB with per-song level matching to −16 LUFS (owner masters measure −14 to −20 LUFS), dipped only −2.5 dB for about a second under crashes. Everything else pauses with the tree.
 
 ## Soundtrack (scripts/music.gd)
 
-Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades, gentle ducking under crashes and nitro ignition. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. Agents never add, generate or alter songs.
+Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades. The soundtrack leads the mix: songs are level-matched to −16 LUFS (LOUDNESS table in `scripts/music.gd`, refreshed with `tools/measure_music.sh`) and play at −3 dB on the Music bus (≈ −20 LUFS), while the wind and snow bed at speed sits near −29 LUFS; landings, crashes and nitro punch through. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. Agents never add, generate or alter songs.
 
 Implementation: two AudioStreamPlayers alternate for crossfades; discovery merges `ResourceLoader.list_directory()` with `DirAccess` listings (stripping `.import`/`.remap`), so imported, not-yet-imported (decoded with `AudioStreamMP3/OggVorbis.load_from_file`) and exported files are all found; songs are forced non-looping; the bag is refreshed from disk at every cycle so new songs join without a restart. The node always processes so finish/fatal results keep playing; the pause menu calls `set_paused()` for explicit pauses (Menu, controller disconnect, focus loss). Verified through the real mixer with Movie Maker (`tests/movie_music.gd`): opener audible at launch, silence while paused, resume at the same position, seamless crossfade, no clipping.
 

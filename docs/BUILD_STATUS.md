@@ -1,8 +1,79 @@
-# Current build status — development pass 3
+# Current build status — development pass 4
 
-Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It was developed in a cloud container against the GitHub repository with the **official Godot 4.7.2 Linux build** (`4.7.2.stable.official.ed1daf0bf`, the same commit as the Windows executable, SHA-512 verified). The container has **no GPU, no audio device and no controller**: rendering used Mesa llvmpipe (software OpenGL 4.5) under Xvfb, audio was captured through Godot's Movie Maker, and controllers were simulated with input actions/events. Nothing below claims hardware feel, listening, or real 4K/60 performance.
+Pass 4 answers the owner's first hands-on playtest of pass 3: *"fun but needs a lot of polish; the sound effects cover up the music; the wind sound is just obnoxious; the mountain needs a lot of work, but it was still the right concept."* Developed in the cloud with the **official Godot 4.7.2 Linux build** (`4.7.2.stable.official.ed1daf0bf`). The container has **no GPU, no audio device and no controller**: rendering is Mesa llvmpipe software GL, audio is captured through Movie Maker and measured, controllers are simulated. Nothing here claims hardware feel, listening or real 4K/60 performance.
 
-## What changed
+## Pass 4 changes
+
+**Mix: the music leads** (`scripts/snow_audio.gd`, `scripts/music.gd`)
+- Measured the complaint first: in pass 3 the effects bed at speed was **7 dB louder than the music** (−16.1 vs −23.0 LUFS).
+- Every continuous bed (snow, carve, skid, wind, clothing) was cut hard, the SFX bus lowered and its compressor make-up gain removed, a 7.5 kHz low-pass takes the fizz off the snow hiss.
+- Music bus raised from −8 to −3 dB; songs are level-matched to −16 LUFS (they range −14 to −20), so quiet masters no longer disappear; ducking reduced to a brief −2.5 dB under crashes only.
+- **Measured result at ~30 m/s: music −19.9 LUFS, effects bed −29.1 LUFS — the music now sits ~9 dB ABOVE the bed.** Landings, crashes, nitro and the sputter still punch through.
+
+**Wind: rebuilt** (`tools/synth_audio.py`)
+- The whistle/flutter layer (resonant tones at 1.1 and 1.8 kHz with fast flutter) is deleted outright.
+- Wind is now two soft, dark layers: a slowly breathing low bed and a smooth speed rush rolled off above ~1.5 kHz that only builds at real speed (speed²). Gusts are gentler, the wind bus is low-passed at 5 kHz (1.6 kHz in forest), clothing flutter is faint and mostly in the air.
+
+**The mountain: `massif_v3`** (`scripts/mountain.gd`, details in MOUNTAIN.md)
+- A true summit peak with the ground falling away behind and off both shoulders.
+- Pitches and benches (grade ≈0.24–0.44) instead of one constant ramp; same average grade and ~5 minute target.
+- Two winding natural drainage gullies (banked like half-pipes) that pass the gorge ends, become the forest's creek-bed corridors and merge into the finish valley; the west creek ends in an icefall over the escarpment.
+- Rolling drift/moraine relief everywhere, strongest in the Broken Mountain.
+- Trees in natural thickets, glades and a real treeline (6,780 trees, was 4,580); boulders in gardens with a few big erratics (823 boulders + 884 cliff outcrops) that always leave a rideable gap.
+- The sun now rakes across the slope: rolls, banks, ripples and the surrounding ranges are modelled by light and long shadows instead of flat white. Distant ranges re-shaded (snowfields over dark rock, no stripes). Finish funnel kept clear.
+- Spur gap rebuilt with the kicker at the lip, a lower far rim and a steep landing.
+- New records file `snow_records_massif_v3.json`; older files untouched.
+
+**No more getting stuck** (`scripts/rider.gd`) — found by riding the new terrain with the bots:
+- A pushes off again whenever the rider is nearly stopped, kicking away from a trunk or boulder they are leaning on.
+- Get-up/recovery spots must have a clear 7 m path downhill (no standing up boxed in).
+- A rare physics freeze (board pinned on a terrain crease while still "moving") now self-corrects.
+
+## Pass 4 automated validation
+
+| Suite | Result |
+|---|---|
+| Import / parse | exit 0, no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` (now also: standing push, v3 records, song level-matching, playtest mix rules) | **52/52** |
+| `terrain_test.gd` | **5/5** — spur gap clears and earns 0.19 nitro; pinch gap clears and earns 0.21 |
+| `mountain_test.gd` camera checks | 8/8 (also `--camera-only`) |
+| Straight push-off, no input | Fatal gorge fall at **1:08.7** — no completion |
+| Reference route | **5:28.7**, 10,033 m travel, 39.4 m/s peak, 4 recoverable falls |
+| Cautious profile | **6:36.7**, 28.8 m/s peak, 2 falls |
+| Tricks profile | **5:30.2**, 43.7 m/s peak, 18 rewarded landings, 2.2 boards of nitro earned, 7.2 s boosting |
+
+Bots press only ordinary inputs and know the route; they prove the course is rideable, not how it feels.
+
+## Pass 4 measurements
+
+- **Mix** (`tests/movie_mix.gd`, real mixer via Movie Maker, 40 s descent recorded once per half): music-only −19.9 LUFS at speed; effects-only −29.1 LUFS at speed; before this pass −23.0 and −16.1.
+- **Render cost at 3840x2160** (`tests/perf_probe.gd`, counts only — software-GL frame times are meaningless):
+
+| View | Draw calls | Primitives |
+|---|---:|---:|
+| Summit | 454 | 543,620 |
+| Cliffs | 439 | 511,502 |
+| Forest | 456 | 1,220,439 |
+| Broken Mountain | 431 | 357,688 |
+| Final Descent | 381 | 495,471 |
+| Finish | 345 | 242,614 |
+
+  About the same as pass 3 (more trees, offset by a shorter detailed-tree range of 320 m). Startup generation 4.5 s on the cloud CPU (was 3.2 s).
+- **Renders inspected** (software GL, 1600x900): summit peak, fast summit, gorge approach, buttress, forest, escarpment, broken mountain, pinch gap, final bowl, finish.
+
+## Still needs the owner's PC
+
+1. **Listen again**: is the music now clearly on top, is the wind pleasant, are impacts/nitro still satisfying at the lower effects level? (Measured, not heard.)
+2. **Ride the new mountain**: summit ridge, gullies as banked lines, benches, the icefall creek, both gap jumps; does it now feel like a place?
+3. Xbox feel of the standing push (A when stopped) and everything listed for pass 3.
+4. Real 4K/60 frame rate, especially the denser forest.
+
+# Pass 3 record (history)
+
+Everything below describes pass 3 as delivered; where pass 4 changed a number, the pass-4 section above wins.
+
+## What changed in pass 3
 
 **Riding physics** (`scripts/rider.gd`, constants in `scripts/snow_tuning.gd`)
 - Carve model: yaw rate limited by the lateral acceleration an edge can hold (22 m/s²) and a low-speed pivot cap (1.9 rad/s); shaped analog steering with fast edge release; edge engagement scales grip; braking deliberately breaks grip into a skid. Gravity, drag, boost and burn constants unchanged; no speed cap.
@@ -33,7 +104,7 @@ Pass 3 is a gameplay, camera, visual and audio overhaul of the pass-2 Massif. It
 
 **UI / controls**: restyled frosted pause/results screen (time, top ten with the new entry highlighted, readable remap names), auto-pause on controller disconnect and window focus loss, results delayed briefly after a finish/fatal crash. Same 15 remappable actions; control and record files unchanged.
 
-## Automated validation (cloud, Godot 4.7.2 Linux, 60 Hz fixed step)
+## Pass 3 automated validation (cloud, Godot 4.7.2 Linux, 60 Hz fixed step)
 
 | Suite | Result |
 |---|---|
@@ -53,7 +124,7 @@ Bots use only ordinary inputs (they read state to decide) and never write positi
 
 Captured with `tests/visual_capture.gd` at 1600x900 and `tests/movie_ride.gd` (Movie Maker, 960x540) and inspected: summit vista, look-back, gorge approach (dark scoured band and visible far wall), gorge side view, buttress, forest and tree close-up, escarpment, Broken Mountain pinch gap (kicker reads as scoured stone), final bowl, finish gate, rider close-up, carving with spray and tracks, nitro glow/embers, pause menu, and a real ride with airs, carves, boost and sputter. Renders are not committed (git-ignored `work/`); regenerate with QA.md §6–7.
 
-## Render cost probe (4K, counts only)
+## Pass 3 render cost probe (4K, counts only)
 
 `tests/perf_probe.gd` at 3840x2160 (llvmpipe). Draw calls / primitives / objects are scene properties and transfer to the target GPU; the llvmpipe frame times are meaningless and are not reported.
 
@@ -68,7 +139,7 @@ Captured with `tests/visual_capture.gd` at 1600x900 and `tests/movie_ride.gd` (M
 
 Counts include all passes (4 shadow splits + main) and were taken after merging boulder and outcrop batches per chunk (≈5–10% fewer calls than before the merge). Startup generation measured **3.2 s** on the cloud CPU (pass 2 built a lighter world). Physics process ~0.6 ms per tick. Pass 2 measured 113–177 calls per view; pass 3 trades roughly 3x the draw calls and up to ~1.2 M triangles in the forest for the new scenery and shadows. The previous GPU measurement left large headroom (≈1.5 ms at 4K), but **real 4K/60 frame times must be measured on the RTX 2070 SUPER** (QA.md §8).
 
-## Audio measurement (not a listening test)
+## Pass 3 audio measurement (not a listening test)
 
 Movie Maker capture of the real bus output during a scripted 31 s ride (summit, push-off, three trick jumps, carves, nitro, empty sputter, brake, crash with tumble and get-up), analysed with `tools/analyze_mix.py`. First capture: no clipped samples, peak −5.6 dBFS, −26.8 dB RMS, so the SFX bus was raised 4 dB. Final capture: **no clipped samples, peak −1.6 dBFS, −23.0 dB RMS**; quiet summit ambience (≈ −42 dB RMS); board hiss (2–8 kHz) drops ≈ 8 dB within 0.1 s of leaving the snow; landings add ≈ 15 dB of sub-150 Hz energy; the crash, empty-nitro sputter and nitro ignition stand clearly above the riding bed. The soundtrack was not yet installed during the ride captures. A separate soundtrack capture (`tests/movie_music.gd`) through the real mixer showed the opener at launch (≈ −27 dB RMS with summit ambience), digital silence while paused, resume at the same position (3.99 s → 4.00 s), a seamless crossfade to the next song and no clipping. Track loudness measured −14 to −20 LUFS (ffmpeg EBU R128) against −18.4 LUFS for the gameplay mix. Loop seams were checked numerically. Nobody has listened to the mix yet.
 
@@ -84,7 +155,7 @@ Movie Maker capture of the real bus output during a scripted 31 s ride (summit, 
 - Procedural art and animation (no skeletal mesh, no ragdoll; tumble is a scripted rigid body tumble with limb flail). Tracks are ribbons, not deformation.
 - CPU particles (Compatibility) express spray density through opacity/size rather than emission rate.
 - Bot results are not human results; fixed 60 Hz does not guarantee bit-identical contact physics across hardware.
-- Records keep `snow_records_massif_v2.json`: the course layout is unchanged, but rider physics changed slightly (reference bot 5:20.6 → 5:24.5), so pass-2 times are close but not strictly comparable.
+- Pass 3 kept `snow_records_massif_v2.json`; pass 4 reshaped the mountain and moved to `snow_records_massif_v3.json` (older files are kept untouched).
 
 ## Launch
 

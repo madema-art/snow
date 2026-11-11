@@ -1,4 +1,4 @@
-# Game design — pass 3
+# Game design — pass 4
 
 **One snowboarder. One enormous mountain. One objective: reach the bottom as fast as possible.**
 
@@ -15,7 +15,7 @@ SNOW puts the player alone on the summit of the Massif. There are no runs, signs
 ## Rules
 
 - **Start:** one stationary rider at the summit; look around freely; A pushes off and starts the clock. No countdown or intro.
-- **Riding:** LS steers/carves; LT brake-skid; RT tuck; A hold/release ollie (longer crouch, higher pop; works up to ~0.14 s after a lip); RS camera only.
+- **Riding:** A pushes off again whenever the rider is nearly stopped (flat bench, facing uphill, leaning on a tree). LS steers/carves; LT brake-skid; RT tuck; A hold/release ollie (longer crouch, higher pop; works up to ~0.14 s after a lip); RS camera only.
 - **Tricks:** in the air LB/RB spin, D-pad flips, X grab. Rewards (stored nitro) come only on a clean landing and scale with air time, the size of the drop, completed 180s, completed flips, grab time, combinations of different elements and landing quality. Tiny flat hops pay nothing. Repeating the same trick, or chaining landings back-to-back, quickly devalues them (fatigue recovers with riding time). A 180 rides away switch.
 - **Landing:** judged on spin/flip completion, board-vs-travel alignment and impact into the slope. Misaligned or overly violent landings are falls.
 - **Nitro:** hold B to spend; release to keep the rest; the board dims as it burns. Pure forward thrust: no extra grip. Pressing with an empty board sputters.

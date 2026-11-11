@@ -398,6 +398,7 @@ func make_scenery(start: float) -> void:
 		if absf(x-120) < 40 and lz > 1430 and lz < 1600: continue
 		if gap_line(x, z): continue
 		if normal_at(x, z).y < 0.75 or z < 180 or z > FINISH - 120: continue
+		if z > FINISH - 420 and absf(x) < 90.0: continue # the finish funnel stays clear
 		# A few house-sized erratics among mostly modest boulders.
 		var s := 1.2 + pow(size_roll, 2.2) * 5.5
 		if lz > 1100 and lz < 2800: s *= 1.6

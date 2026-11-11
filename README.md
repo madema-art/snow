@@ -31,7 +31,7 @@ Then follow [docs/QA.md](docs/QA.md): headless import, the four automated suites
 | Left stick | Steer / carve (**fixed**) |
 | Right stick | Free camera: unlimited orbit, look behind/uphill/across — on snow and in the air. Never steers or spins the rider |
 | RS click | Smoothly recenter the camera |
-| A | Push off (starts the clock) · hold to crouch, release to ollie (longer hold = bigger pop) |
+| A | Push off (starts the clock, and again whenever you are nearly stopped) · hold to crouch, release to ollie (longer hold = bigger pop) |
 | B (hold) | Nitro; release to save the rest |
 | LT / RT | Brake-skid / tuck |
 | X (air) | Grab |
@@ -52,7 +52,7 @@ Every action except left-stick steering and Menu can be remapped in the pause me
 
 ## Saves
 
-Course records: `user://snow_records_massif_v2.json` (pass-3 changes keep the same course and timing basis). Controls: `user://snow_controls_v2.json`. On Windows: `%APPDATA%\Godot\app_userdata\SNOW\`. Tests only use disposable `test_*` files.
+Course records: `user://snow_records_massif_v3.json` (the mountain was reshaped in pass 4, so it has its own top ten; older record files are kept untouched). Controls: `user://snow_controls_v2.json`. On Windows: `%APPDATA%\Godot\app_userdata\SNOW\`. Tests only use disposable `test_*` files.
 
 ## Documentation
 
@@ -71,4 +71,4 @@ All art, animation and sound effects are original and procedural/synthesized in 
 
 ## Soundtrack
 
-Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades, gentle ducking under crashes and nitro ignition. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. To add music, commit `.mp3`/`.ogg` files to `assets/music/`; no playlist editing is needed.
+Owner soundtrack in `res://assets/music/`, managed by `scripts/music.gd` (SnowMusic) on the `Music` bus: every launch opens with `Alpine Shift (Take 2) (Remix).mp3` (exact name; a random song if it is missing), then a shuffle bag of every other song, then full reshuffles of all songs (opener included), never the same song twice in a row, 2.5 s equal-power crossfades. The soundtrack leads the mix: songs are level-matched to −16 LUFS (LOUDNESS table in `scripts/music.gd`, refreshed with `tools/measure_music.sh`) and play at −3 dB on the Music bus (≈ −20 LUFS), while the wind and snow bed at speed sits near −29 LUFS; landings, crashes and nitro punch through. Any .mp3/.ogg dropped into the folder is discovered automatically (editor and exported builds). Explicit pauses pause it in place; crashes, finishes, results and restarts never interrupt or restart it. No titles or controls are ever shown. With no songs the game is silent of music and works normally. To add music, commit `.mp3`/`.ogg` files to `assets/music/`; no playlist editing is needed.

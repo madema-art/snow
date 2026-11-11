@@ -51,7 +51,7 @@ func _ready() -> void:
 	sun.name = "Sun"
 	sun.basis = Basis.looking_at(-SUN_DIRECTION.normalized(), Vector3.UP)
 	sun.light_color = Color("fff1dc")
-	sun.light_energy = 2.0
+	sun.light_energy = 1.75
 	sun.light_angular_distance = 0.6
 	sun.shadow_enabled = true
 	sun.shadow_bias = 0.04

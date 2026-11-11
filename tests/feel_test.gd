@@ -204,6 +204,28 @@ func go() -> void:
 	check(run.last_rank == 1 and run.records == [100.0, 110.0, 120.0], "finish reports its top-ten rank")
 	check(controls.describe("look_left") == "RS left" and controls.describe("brake") == "LT", "readable binding names in the menu")
 
+	# --- Pass 4: standing push, records version, playtest mix rules ----------
+	menu.restart()
+	await press_and_run(40)
+	Input.action_press("brake")
+	await frames(240)
+	Input.action_release("brake")
+	rider.velocity = Vector3.ZERO # FIXTURE: a dead stop on the slope
+	await frames(1)
+	var stop_speed := rider.speed
+	Input.action_press("jump")
+	await frames(2)
+	Input.action_release("jump")
+	await frames(4)
+	check(stop_speed < 1.0 and rider.speed > 2.0 and rider.air_time < 0.3, "A pushes off again from a near standstill (no one stays stuck)")
+	var fresh_run := SnowRun.new()
+	check(fresh_run.records_path.ends_with("snow_records_massif_v3.json") and SnowMountain.COURSE_ID == "massif_v3", "reshaped mountain keeps its own records file")
+	fresh_run.free()
+	check(is_equal_approx(SnowMusic.track_gain_db("x/Heavier Half-time Beat Cover.mp3"), 4.0) and SnowMusic.track_gain_db("x/Alpine Shift (Take 2) (Remix).mp3") < -1.5 and SnowMusic.track_gain_db("x/Some New Song.mp3") == 0.0, "songs are level-matched; unknown songs play at the default level")
+	var loudest_bed := 0.0
+	for loop_name in SnowAudio.LOOPS:
+		if loop_name != "nitro_loop": loudest_bed = maxf(loudest_bed, SnowAudio.LOOPS[loop_name][1])
+	check(not SnowAudio.LOOPS.has("wind_whistle") and loudest_bed <= 0.5 and SnowMusic.MUSIC_BUS_DB >= -4.0 and SnowMusic.DUCK_DB >= -3.0, "playtest mix rules hold: no whistle layer, quiet beds, music leads")
 	# --- Soundtrack manager (real files in res://assets/music/) ------------
 	var music: SnowMusic = game.get_node("Music")
 	var opener := music.music_dir.path_join(SnowMusic.OPENING_TRACK)
