@@ -29,7 +29,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/prototype_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 ```
 
-Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
+Pass 5: momentum tumbles (faster falls travel farther, body frozen at zero riding speed, several impacts, groan, get-up at rest), fatal tumble over the gorge lip (fixture), first-hit and rolling grunts, plume from a committed carve without tipping, over-lean fall after ~1.9 s at full lock, braking exception, left stick forward tuck / back brake / deadzone via real joypad events, restart needs a hold, View cycles camera range and persists, older saved mappings upgrade without losing remaps. Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
 ## 4. Local terrain / shortcut fixtures
 
@@ -53,10 +53,10 @@ Each run first does camera checks, then **A: straight** (push-off, no steering; 
 ## 6. Visual captures (software GL is fine)
 
 ```bash
-xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --rendering-driver opengl3 --script res://tests/visual_capture.gd
+xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/visual_capture.gd
 ```
 
-Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
+Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro`/`ride_plume`/`ride_tumble` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
 
 ## 7. Real ride recording (video + the game's actual audio mix)
 

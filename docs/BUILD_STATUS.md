@@ -1,6 +1,57 @@
-# Current build status — development pass 4
+# Current build status — development pass 5
 
-Pass 4 answers the owner's first hands-on playtest of pass 3: *"fun but needs a lot of polish; the sound effects cover up the music; the wind sound is just obnoxious; the mountain needs a lot of work, but it was still the right concept."* Developed in the cloud with the **official Godot 4.7.2 Linux build** (`4.7.2.stable.official.ed1daf0bf`). The container has **no GPU, no audio device and no controller**: rendering is Mesa llvmpipe software GL, audio is captured through Movie Maker and measured, controllers are simulated. Nothing here claims hardware feel, listening or real 4K/60 performance.
+Pass 5 implements the owner's feature requests after playing pass 4: left stick forward/back for tuck/brake, a snow plume from deep leans, an over-lean fall, falls as exaggerated momentum physics with pain sounds and snow dispersion, and the View button cycling camera distance. Developed in the cloud with the **official Godot 4.7.2 Linux build**. The container has **no GPU, no audio device and no controller** (software GL, measured audio, simulated input), so nothing here claims hardware feel, listening or real 4K/60 performance.
+
+## Pass 5 changes
+
+**Left stick forward / back** (`scripts/controls.gd`, `scripts/rider.gd`)
+- Forward crouches into a tuck (less drag, more speed); back brakes into a skid. Fixed like steering, 0.3 deadzone so steering alone never tucks or brakes. LT/RT still work and stay remappable.
+
+**Deep lean, plume and over-lean** (`scripts/rider.gd`, `scripts/snow_fx.gd`)
+- Leaning hard (about 75–85% stick) throws a plume out the side OPPOSITE the lean: a dense arcing core, soft mist that hangs in the air and sun glitter, sized by lean and speed, with its own rushing spray sound and light rumble.
+- Past ~82% stick the board also turns up to 20% tighter, but the lean keeps deepening; after about 1.9 s at full lock at speed the edge washes out and the rider tumbles. Easing off, switching edges or braking recovers; below ~7 m/s it never happens. Warnings are physical only: the body laid over toward the snow, rising chatter, controller shudder.
+- Fixed while here: edge spray was being thrown to the inside of the turn; it now goes to the outside.
+
+**Falls are momentum physics** (`scripts/rider.gd`, constants `TUMBLE_*`)
+- The fallen body keeps ~62% of its crash velocity (or rebounds off the trunk/boulder it hit), is pitched off the snow, cartwheels with repeated hops and impacts, ploughs and slides to rest; steeper ground slides longer. Measured: ~7 m from a 10 m/s fall, ~30 m in 3.4 s from 30 m/s.
+- A tumble that goes over a drop of 18 m or more (gorge lip, icefall, cuts) becomes fatal — by physics, not by zone.
+- Every impact: thud, a pain grunt, a burst of snow and flying clods thrown along the body's momentum, a camera jolt with a brief FOV punch, and a controller hit. Rolling ploughs a snow trail. A groan when the body stops; a yell on a long cliff fall, with the impact sound held until the ground.
+- The rider gets up where the body came to rest (nearest safe spot if needed), never before it has stopped. Riding speed, velocity and nitro are still wiped the instant of the fall and stay zero throughout.
+
+**Camera distance on View** (`scripts/chase_camera.gd`)
+- View cycles close / medium / far (x0.72 / x1 / x1.5 boom, measured 4.2 / 5.8 / 8.7 m at rest); the choice is saved in `user://snow_camera.json`.
+- Restart moved to **Y, held ~0.35 s** (a tap does nothing). An older saved control mapping is upgraded automatically: View becomes the camera control, the old default restart moves to Y, and every remap the player made is kept.
+
+**New sounds** (`tools/synth_audio.py`): 12 more original sounds (43 total) — three first-hit grunts, five rolling grunts, two groans, a falling yell and the plume spray. The voice is synthesised (glottal source + vowel formants), not recorded.
+
+**Also fixed:** particles that had not been emitted yet were drawn full-size and black at their emitter (visible as a dark disc once the larger mist was added); the particle material now keeps particle scale, which also makes size-over-life apply.
+
+## Pass 5 automated validation
+
+| Suite | Result |
+|---|---|
+| Import / parse | exit 0, no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` (now also: momentum tumbles, fatal tumble over the gorge lip, grunts, plume, over-lean, braking exception, left stick forward/back, restart hold, camera range + persistence, mapping upgrade) | **76/76** |
+| `terrain_test.gd` | **5/5** |
+| `mountain_test.gd` camera checks | 8/8 (also `--camera-only`) |
+| Straight push-off, no input | Fatal gorge fall at **1:08.7** — no completion |
+| Reference route | **5:26.4**, 10,055 m travel, 39.4 m/s peak, 3 recoverable falls |
+| Cautious profile | **6:42.0**, 28.8 m/s peak, 3 falls |
+| Tricks profile | **5:23.5**, 44.0 m/s peak, 17 rewarded landings, 2.2 boards of nitro earned, 7.3 s boosting |
+
+Bots press only ordinary inputs (and, like a careful rider, never hold full lock). Renders inspected (software GL): deep-lean plume, a fall in mid-throw and at rest, pause menu with the new control row.
+
+## Still needs the owner's PC
+
+1. **Feel of the new controls**: stick forward/back thresholds, how long full lean can be held, how far tumbles carry.
+2. **Listen**: the synthesised grunts/groans/yell are the least certain sounds in the game — tell me if they read as painful, comic or robotic. Also the plume spray level.
+3. **Look**: plume size/density at 4K, tumble exaggeration, camera close/medium/far distances.
+4. Everything listed under pass 4 below (music lead, wind, new mountain) if not yet checked.
+
+# Pass 4 record (history)
+
+Pass 4 answered the owner's first hands-on playtest of pass 3: *"fun but needs a lot of polish; the sound effects cover up the music; the wind sound is just obnoxious; the mountain needs a lot of work, but it was still the right concept."*
 
 ## Pass 4 changes
 

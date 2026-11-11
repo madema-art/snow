@@ -28,7 +28,8 @@ Then follow [docs/QA.md](docs/QA.md): headless import, the four automated suites
 
 | Control | Action |
 |---|---|
-| Left stick | Steer / carve (**fixed**) |
+| Left stick | Steer / carve. Push **forward** to crouch into a tuck and gain speed, pull **back** to brake (**fixed**) |
+| Left stick, leaned hard | Throws a plume of snow out the opposite side and turns tighter. Held at full lean too long, the edge washes out and you tumble |
 | Right stick | Free camera: unlimited orbit, look behind/uphill/across — on snow and in the air. Never steers or spins the rider |
 | RS click | Smoothly recenter the camera |
 | A | Push off (starts the clock, and again whenever you are nearly stopped) · hold to crouch, release to ollie (longer hold = bigger pop) |
@@ -38,7 +39,8 @@ Then follow [docs/QA.md](docs/QA.md): headless import, the four automated suites
 | LB / RB (air) | Spin left / right |
 | D-pad up / down (air) | Front / back flip |
 | Menu | Pause / resume (**fixed**) |
-| View | Instant restart from the summit |
+| View | Camera distance: close / medium / far (remembered) |
+| Y (hold) | Restart from the summit (hold about a third of a second, so a stray tap never wipes a run) |
 
 Every action except left-stick steering and Menu can be remapped in the pause menu; conflicts swap, mappings persist. The menu always navigates with D-pad/left stick, A, B and Menu. Unplugging the controller or losing window focus mid-run pauses the game. Keyboard (developer): A/D steer, Space push/ollie, Shift nitro, S brake, W tuck, G grab, Q/E spin, T/F flips, arrows camera, C recenter, R restart, Esc pause.
 
@@ -47,6 +49,7 @@ Every action except left-stick steering and Menu can be remapped in the pause me
 - No HUD while riding: no clock, speed, nitro bar, score, minimap, prompts or arrows. The pause/results screen alone shows elapsed time (hundredths), the ten fastest **completed** descents and the control mapping.
 - The board is the only nitro meter: dark when empty, orange as it charges, luminous near full, dimming as boost burns.
 - Landed jumps and tricks build nitro: bigger air, bigger drops, harder spins/flips/grabs and combinations pay more; clean landings pay more than sketchy ones; repeating the same trick (or spamming hops) quickly stops paying.
+- Falls are momentum physics: the rider is thrown with the speed they had, bounces, rolls and slides to rest (grunting all the way), then gets up there. A tumble that carries over a real drop is fatal.
 - **Every fall instantly wipes all speed and all stored nitro.** Minor/moderate/severe falls cost more or less get-up time; the clock keeps running. Huge cliff drops, falls into gorges and extreme direct impacts end the run (never recorded). There are no health or injury systems and no death zones — only real geometry.
 - Five regions — Summit, Cliffs, Forest, Broken Mountain, Final Descent — on one continuous mountain with no checkpoints or invisible walls. Riding straight down meets rocks and then a fatal gorge. Several routes and optional shortcut jumps exist; see [docs/MOUNTAIN.md](docs/MOUNTAIN.md).
 

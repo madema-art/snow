@@ -86,7 +86,8 @@ func drive() -> void:
 		elif stall_frames % 30 == 2: Input.action_release("jump")
 	var desired := atan2(target.x - rider.position.x, maxf(8,target.y - rider.position.z))
 	var error := wrapf(desired - rider.heading, -PI, PI)
-	var steer := clampf(-error * 2.8, -1, 1)
+	# Like a careful human the bot never holds the stick at full lock (over-lean).
+	var steer := clampf(-error * 2.8, -0.8, 0.8)
 	Input.action_press("steer_right", maxf(steer,0))
 	Input.action_press("steer_left", maxf(-steer,0))
 	var brake := clampf((rider.speed - target_speed) * 0.22 + maxf(0, absf(error) - 0.35) * 0.5,0,0.85)

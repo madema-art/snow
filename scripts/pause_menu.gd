@@ -162,7 +162,7 @@ func build() -> void:
 	right.add_theme_constant_override("separation", 10)
 	columns.add_child(right)
 	right.add_child(label("CONTROLS", 46, ACCENT))
-	right.add_child(label("Left stick  steer and carve   ·   Menu  pause / resume   (fixed)", 32, MUTED))
+	right.add_child(label("Left stick  steer · forward tuck · back brake      Menu  pause      (fixed)", 32, MUTED))
 	for action in SnowControls.DEFAULTS:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 30)

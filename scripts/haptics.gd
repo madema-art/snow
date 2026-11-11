@@ -43,7 +43,7 @@ func _on_event(kind: String, strength: float) -> void:
 			queue(0.0, 0.8, 1.0, 0.6)
 			queue(0.65, 0.4, 0.6, 0.4)
 		"tumble":
-			queue(0.0, 0.2, strength * 0.5, 0.07)
+			queue(0.0, 0.3 + strength * 0.3, 0.25 + strength * 0.7, 0.09 + strength * 0.1)
 		"boost":
 			queue(0.0, 0.4, 0.9, 0.18)
 		"empty":
@@ -74,6 +74,9 @@ func _physics_process(delta: float) -> void:
 	if grounded:
 		weak = r * 0.12 + rider.surface.y * r * 0.25 + rider.brake_input * r * 0.25 + absf(rider.steer) * r * 0.08
 		strong = rider.surface.y * r * 0.08 + rider.brake_input * r * 0.12
+		# Deep lean: the plume buzzes lightly; an edge about to wash out shudders hard.
+		weak += rider.plume * 0.18
+		strong += rider.over_lean * rider.over_lean * 0.6
 	if rider.boosting:
 		strong += 0.3
 		weak += 0.1

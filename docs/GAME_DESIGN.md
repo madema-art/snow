@@ -1,4 +1,4 @@
-# Game design — pass 4
+# Game design — pass 5
 
 **One snowboarder. One enormous mountain. One objective: reach the bottom as fast as possible.**
 
@@ -15,14 +15,17 @@ SNOW puts the player alone on the summit of the Massif. There are no runs, signs
 ## Rules
 
 - **Start:** one stationary rider at the summit; look around freely; A pushes off and starts the clock. No countdown or intro.
+- **Left stick:** steers; forward crouches into a tuck (less drag, more speed); back brakes into a skid. The triggers do the same and stay remappable.
+- **Deep lean and plume:** leaning hard (about 75–85% stick) throws a rooster-tail plume of snow, mist and glitter out the side opposite the lean. Past ~82% the board also turns up to 20% tighter, but the lean keeps deepening: after roughly two seconds near full lock at speed the edge washes out and the rider goes down. Easing off, switching edges or braking brings the rider back up. No meter: the body laid over toward the snow, a rising chatter and controller shudder are the warning.
+- **Camera distance:** View cycles close / medium / far and the choice is remembered.
 - **Riding:** A pushes off again whenever the rider is nearly stopped (flat bench, facing uphill, leaning on a tree). LS steers/carves; LT brake-skid; RT tuck; A hold/release ollie (longer crouch, higher pop; works up to ~0.14 s after a lip); RS camera only.
 - **Tricks:** in the air LB/RB spin, D-pad flips, X grab. Rewards (stored nitro) come only on a clean landing and scale with air time, the size of the drop, completed 180s, completed flips, grab time, combinations of different elements and landing quality. Tiny flat hops pay nothing. Repeating the same trick, or chaining landings back-to-back, quickly devalues them (fatigue recovers with riding time). A 180 rides away switch.
 - **Landing:** judged on spin/flip completion, board-vs-travel alignment and impact into the slope. Misaligned or overly violent landings are falls.
 - **Nitro:** hold B to spend; release to keep the rest; the board dims as it burns. Pure forward thrust: no extra grip. Pressing with an empty board sputters.
-- **Falls:** EVERY fall instantly zeroes velocity, speed and stored nitro and darkens the board. A visual tumble plays out (presentation only), then the rider gets up where the tumble safely stopped (never past a lip or hazard, never more than a few metres). Recovery time scales with severity — minor (~1.5 s), moderate (~2.5–3.5 s), severe (up to 7 s) — and counts toward the run.
+- **Falls:** EVERY fall instantly zeroes riding velocity, speed and stored nitro and darkens the board. The fall itself is momentum physics, exaggerated so it is felt: the body is thrown with about 60% of the speed it had (or back off the trunk/boulder it hit), cartwheels, bounces, ploughs a trail and slides to rest; faster crashes travel much farther (≈7 m from 10 m/s, ≈30 m from 30 m/s), steeper ground slides longer, and a tumble that carries over a drop of 18 m or more is fatal. Every impact throws snow along the body's momentum, jolts the camera and the controller, and hurts: a grunt on the first hit, shorter grunts as it rolls, a groan when it stops, a yell on a long fall. The rider gets up where the body came to rest (or the nearest safe spot). Recovery is at least the severity time — minor (~1.5 s), moderate (~2.5–3.5 s), severe (up to 7 s) — and never starts before the tumble has stopped; all of it counts toward the run.
 - **Fatal:** large cliff drops and gorge falls (real apex-to-ground distance), and extreme direct impacts into trees/rocks/walls end the run. The moment plays out, then results appear. Fatal runs never enter the records.
 - **Finish:** a timber gate with banners and pennant lines at the valley floor. Crossing it stops the clock; the rider skids to a stop; results show the time and its top-ten rank.
-- **Restart:** View (or the menu) restores summit, stillness, zero nitro, zero speed, zero time and fresh state instantly.
+- **Restart:** hold Y for about a third of a second (or use the menu); it restores summit, stillness, zero nitro, zero speed, zero time and fresh state instantly.
 - **Pause:** Menu, controller disconnect, or loss of window focus mid-run. Pause freezes physics, timer, camera, audio and particles (midair too).
 
 ## Camera

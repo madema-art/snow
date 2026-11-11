@@ -1,6 +1,8 @@
 class_name SnowControls
 extends Node
 ## Bindings are [kind, index, direction]. Axis directions are individual actions.
+## Fixed (never remapped): left stick X steers, left stick forward tucks, back
+## brakes, Menu pauses. Everything in DEFAULTS can be remapped.
 const DEFAULTS := {
 	"jump": ["button", JOY_BUTTON_A, 1], "boost": ["button", JOY_BUTTON_B, 1],
 	"brake": ["axis", JOY_AXIS_TRIGGER_LEFT, 1], "tuck": ["axis", JOY_AXIS_TRIGGER_RIGHT, 1],
@@ -8,16 +10,17 @@ const DEFAULTS := {
 	"spin_right": ["button", JOY_BUTTON_RIGHT_SHOULDER, 1],
 	"look_left": ["axis", JOY_AXIS_RIGHT_X, -1], "look_right": ["axis", JOY_AXIS_RIGHT_X, 1],
 	"look_up": ["axis", JOY_AXIS_RIGHT_Y, -1], "look_down": ["axis", JOY_AXIS_RIGHT_Y, 1],
-	"restart": ["button", JOY_BUTTON_BACK, 1], "recenter": ["button", JOY_BUTTON_RIGHT_STICK, 1],
+	"restart": ["button", JOY_BUTTON_Y, 1], "recenter": ["button", JOY_BUTTON_RIGHT_STICK, 1],
+	"camera_range": ["button", JOY_BUTTON_BACK, 1],
 	"flip_forward": ["button", JOY_BUTTON_DPAD_UP, 1], "flip_back": ["button", JOY_BUTTON_DPAD_DOWN, 1]
 }
 const KEYS := {"jump": KEY_SPACE, "boost": KEY_SHIFT, "brake": KEY_S, "tuck": KEY_W,
 	"grab": KEY_G, "spin_left": KEY_Q, "spin_right": KEY_E, "look_left": KEY_LEFT,
-	"look_right": KEY_RIGHT, "look_up": KEY_UP, "look_down": KEY_DOWN, "restart": KEY_R,
+	"look_right": KEY_RIGHT, "look_up": KEY_UP, "look_down": KEY_DOWN, "restart": KEY_R, "camera_range": KEY_V,
 	"recenter": KEY_C, "flip_forward": KEY_T, "flip_back": KEY_F}
 const LABELS := {"jump": "Push off / ollie", "boost": "Nitro", "brake": "Brake / skid", "tuck": "Tuck",
 	"grab": "Grab", "spin_left": "Spin left", "spin_right": "Spin right", "look_left": "Camera left",
-	"look_right": "Camera right", "look_up": "Camera up", "look_down": "Camera down", "restart": "Quick restart",
+	"look_right": "Camera right", "look_up": "Camera up", "look_down": "Camera down", "restart": "Restart (hold)", "camera_range": "Camera close / medium / far",
 	"recenter": "Recenter camera", "flip_forward": "Front flip", "flip_back": "Back flip"}
 var bindings: Dictionary = DEFAULTS.duplicate(true)
 var settings_path := "user://snow_controls_v2.json"
@@ -25,17 +28,36 @@ var settings_path := "user://snow_controls_v2.json"
 func migrate_legacy(legacy_path := "user://snow_controls_v1.json") -> void:
 	var old = JSON.parse_string(FileAccess.get_file_as_string(legacy_path))
 	if not old is Dictionary: return
+	var completed := complete_bindings(old)
+	if completed.is_empty(): return
+	bindings = completed
+	save_settings()
+
+## Validates the actions a saved mapping contains and gives every action it lacks
+## (added in a later version) a conflict-free binding, never disturbing the player's
+## own remaps. Returns {} if the saved data is invalid.
+func complete_bindings(saved: Dictionary) -> Dictionary:
 	var used: Array = []
-	var migrated: Dictionary = {}
+	var result: Dictionary = {}
 	for action in DEFAULTS:
-		if not old.has(action): continue
-		if not old[action] is Array or not valid_binding(old[action]): return
-		var b: Array = [old[action][0], int(old[action][1]), int(old[action][2])]
-		if b in used: return
+		if not saved.has(action): continue
+		if not saved[action] is Array or not valid_binding(saved[action]): return {}
+		var b: Array = [saved[action][0], int(saved[action][1]), int(saved[action][2])]
+		if b in used: return {}
 		used.append(b)
-		migrated[action] = b
+		result[action] = b
+	# The View button became the camera-distance control. A mapping saved before
+	# that still has the old DEFAULT restart on View: move that default aside.
+	# (A restart the player deliberately put elsewhere is left alone.)
+	var view: Array = ["button", JOY_BUTTON_BACK, 1]
+	if not result.has("camera_range") and result.get("restart") == view:
+		used.erase(view)
+		result.erase("restart")
+	var missing: Array = []
 	for action in DEFAULTS:
-		if migrated.has(action): continue
+		if not result.has(action): missing.append(action)
+	missing.sort_custom(func(x, y): return x == "camera_range" and y != "camera_range")
+	for action in missing:
 		var b: Array = DEFAULTS[action].duplicate()
 		if b in used:
 			var candidates: Array = []
@@ -48,11 +70,10 @@ func migrate_legacy(legacy_path := "user://snow_controls_v1.json") -> void:
 				if not candidate in used:
 					b = candidate
 					break
-		if b in used: return
+		if b in used: return {}
 		used.append(b)
-		migrated[action] = b
-	bindings = migrated
-	save_settings()
+		result[action] = b
+	return result
 
 func _ready() -> void:
 	configure_ui()
@@ -128,6 +149,15 @@ func apply_bindings() -> void:
 		var key := InputEventKey.new()
 		key.physical_keycode = pair[1]
 		InputMap.action_add_event(pair[0], key)
+	# Fixed like steering: push the left stick forward to tuck, pull back to brake.
+	for pair in [["lean_forward", -1.0], ["lean_back", 1.0]]:
+		if not InputMap.has_action(pair[0]):
+			InputMap.add_action(pair[0], SnowTuning.LEAN_DEADZONE)
+		InputMap.action_erase_events(pair[0])
+		var axis := InputEventJoypadMotion.new()
+		axis.axis = JOY_AXIS_LEFT_Y
+		axis.axis_value = pair[1]
+		InputMap.action_add_event(pair[0], axis)
 
 func describe(action: String) -> String:
 	var b: Array = bindings[action]
@@ -153,15 +183,13 @@ func load_settings() -> void:
 			migrate_legacy()
 		return
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(settings_path))
-	if not parsed is Dictionary or parsed.size() != DEFAULTS.size():
+	if not parsed is Dictionary:
 		return
-	var seen: Array = []
-	for action in DEFAULTS:
-		if not parsed.has(action) or not parsed[action] is Array or not valid_binding(parsed[action]):
-			return
-		var normalized: Array = [parsed[action][0], int(parsed[action][1]), int(parsed[action][2])]
-		if normalized in seen:
-			return
-		parsed[action] = normalized
-		seen.append(normalized)
-	bindings = parsed
+	# Mappings saved by an older version lack newer actions: complete them without
+	# touching the player's own choices, then save the upgraded mapping.
+	var completed := complete_bindings(parsed)
+	if completed.is_empty():
+		return
+	bindings = completed
+	if parsed.size() != DEFAULTS.size():
+		save_settings()

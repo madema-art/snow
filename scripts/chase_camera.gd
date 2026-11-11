@@ -30,6 +30,10 @@ var bump_velocity := 0.0
 var shake := 0.0
 var boost_glow := 0.0
 var drop_raise := 0.0
+## View button: 0 close, 1 medium, 2 far. Remembered between sessions.
+var range_index := 1
+var range_path := "user://snow_camera.json"
+var impact_kick := 0.0
 var look_point := Vector3.ZERO
 var sphere := SphereShape3D.new()
 var query := PhysicsShapeQueryParameters3D.new()
@@ -42,12 +46,27 @@ func _ready() -> void:
 	query.shape = sphere
 	query.collision_mask = 3
 	rider.sound_event.connect(_on_rider_event)
+	load_range()
 	reset()
 
 func auto_lift() -> float:
 	var s := rider.speed if rider else 0.0
 	var air := 0.0 if rider == null or not rider.airborne else 0.1
-	return lerpf(0.3, 0.2, smoothstep(5.0, 40.0, s)) + drop_raise + air
+	return lerpf(0.3, 0.2, smoothstep(5.0, 40.0, s)) + drop_raise + air + T.CAM_RANGE_LIFT[range_index]
+
+func load_range() -> void:
+	if not FileAccess.file_exists(range_path):
+		return
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(range_path))
+	if parsed is Dictionary and (parsed.get("range") is float or parsed.get("range") is int):
+		range_index = clampi(int(parsed["range"]), 0, T.CAM_RANGES.size() - 1)
+
+## Cycle close -> medium -> far -> close. The boom glides to the new length.
+func cycle_range() -> void:
+	range_index = (range_index + 1) % T.CAM_RANGES.size()
+	var file := FileAccess.open(range_path, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify({"range": range_index}))
 
 func reset() -> void:
 	follow_yaw = rider.heading
@@ -59,8 +78,9 @@ func reset() -> void:
 	recentering = false
 	yaw_velocity = 0.0
 	pitch_velocity = 0.0
-	distance = T.CAM_DISTANCE_MIN
+	distance = T.CAM_DISTANCE_MIN * T.CAM_RANGES[range_index]
 	clear_fraction = 1.0
+	impact_kick = 0.0
 	bump = 0.0
 	bump_velocity = 0.0
 	shake = 0.0
@@ -123,8 +143,10 @@ func _on_rider_event(kind: String, strength: float) -> void:
 		"land", "land_sketchy":
 			bump_velocity -= strength * 2.4
 		"crash", "fatal", "tumble":
-			shake = maxf(shake, strength * (0.22 if kind == "fatal" else 0.12))
-			bump_velocity -= strength * 1.5
+			# Every impact of a fall is felt: a jolt, a nod and a brief FOV punch.
+			shake = maxf(shake, strength * (0.3 if kind == "fatal" else 0.2))
+			bump_velocity -= strength * 2.2
+			impact_kick = maxf(impact_kick, strength)
 
 func _physics_process(delta: float) -> void:
 	var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down", T.CAM_DEADZONE)
@@ -146,10 +168,13 @@ func _physics_process(delta: float) -> void:
 	orbit_input(delta, stick, Input.is_action_just_pressed("recenter"))
 	var speed := rider.speed
 	boost_glow = lerpf(boost_glow, 1.0 if rider.boosting else 0.0, 1.0 - exp(-(6.0 if rider.boosting else 2.0) * delta))
-	var target_distance := lerpf(T.CAM_DISTANCE_MIN, T.CAM_DISTANCE_MAX, smoothstep(3.0, 42.0, speed)) + boost_glow * 0.7
+	if Input.is_action_just_pressed("camera_range"):
+		cycle_range()
+	var target_distance: float = (lerpf(T.CAM_DISTANCE_MIN, T.CAM_DISTANCE_MAX, smoothstep(3.0, 42.0, speed)) + boost_glow * 0.7) * T.CAM_RANGES[range_index]
 	if crashed:
 		target_distance += 2.5
-	distance = lerpf(distance, target_distance, 1.0 - exp(-2.2 * delta))
+	distance = lerpf(distance, target_distance, 1.0 - exp(-(2.2 if not Input.is_action_pressed("camera_range") else 5.0) * delta))
+	impact_kick = maxf(0.0, impact_kick - delta * 3.0)
 	# Anchor: horizontally locked to the rider, vertically sprung to absorb bumps.
 	var focus := rider_focus() + Vector3.UP * 1.0
 	var vertical_stiffness := 90.0 if rider.ground_contact else 45.0
@@ -201,7 +226,8 @@ func _physics_process(delta: float) -> void:
 	if global_position.distance_squared_to(look_point) > 0.04:
 		look_at(look_point + jitter)
 	var target_fov := lerpf(T.CAM_FOV_REST, T.CAM_FOV_FAST, smoothstep(6.0, 45.0, speed)) + boost_glow * T.CAM_FOV_BOOST
-	fov = lerpf(fov, target_fov, 1.0 - exp(-2.5 * delta))
+	target_fov += impact_kick * 4.0
+	fov = lerpf(fov, target_fov, 1.0 - exp(-(12.0 if impact_kick > 0.05 else 2.5) * delta))
 
 ## When the snow ahead falls away faster than the slope underfoot (a lip, gorge
 ## or cliff band) the boom rises so the player can see over the edge in time.

@@ -9,6 +9,9 @@ extends Node3D
 ## the landing is a layered sub-thump + slap + crunch and the snow resumes.
 ## Wind: a soft, dark summit bed and a smooth speed rush (no whistles or hiss),
 ## gentle exposure gusts, and forest shelter via a low-pass on MountainWind.
+## Deep-lean plume: an airy rushing sheet of snow. Falls: a grunt on the first
+## hit, shorter grunts on every bounce and roll, a groan at rest, a yell on a
+## long fall (all synthesised voice on the Voice bus).
 ## Nitro: ignition impact -> resonant build -> sustained "singing ice" core ->
 ## depletion glide, plus a mechanical sputter when empty.
 ## Buses: Master (limiter) <- SFX (glue compressor) <- Board / MountainWind /
@@ -33,6 +36,10 @@ var gust_noise := FastNoiseLite.new()
 var clock := 0.0
 var whoosh_timer := 0.0
 var recent_whooshes: Dictionary = {}
+var voice: AudioStreamPlayer      # the rider's own grunts, groans and yells
+var voice_cooldown := 0.0
+var last_grunt := -1
+var falling_fatal := false         # yelling down a cliff; the impact sound waits for the ground
 var rng := RandomNumberGenerator.new()
 
 const LOOPS := {
@@ -42,11 +49,14 @@ const LOOPS := {
 	"carve": ["Board", 0.32, 18.0], "skid": ["Board", 0.45, 14.0],
 	"wind_base": ["MountainWind", 0.3, 1.5], "wind_rush": ["MountainWind", 0.27, 3.0],
 	"cloth_flutter": ["Board", 0.16, 6.0],
+	"plume": ["Board", 0.45, 10.0],
 	"nitro_loop": ["Nitro", 0.6, 9.0],
 }
 const ONE_SHOTS := ["push", "ollie", "land_soft", "land_hard", "land_sketchy", "crash_minor", "crash_moderate",
 	"crash_severe", "fatal", "tumble_0", "tumble_1", "tumble_2", "getup", "nitro_ignite", "nitro_deplete",
-	"nitro_release", "nitro_empty", "charge_small", "charge_big", "charge_full", "whoosh", "branch_brush"]
+	"nitro_release", "nitro_empty", "charge_small", "charge_big", "charge_full", "whoosh", "branch_brush",
+	"grunt_hit_0", "grunt_hit_1", "grunt_hit_2", "grunt_roll_0", "grunt_roll_1", "grunt_roll_2", "grunt_roll_3",
+	"grunt_roll_4", "groan_0", "groan_1", "yell_fall"]
 
 func _ready() -> void:
 	rng.seed = 3129
@@ -78,6 +88,9 @@ func _ready() -> void:
 		s.panning_strength = 1.4
 		add_child(s)
 		spatial_voices.append(s)
+	voice = AudioStreamPlayer.new()
+	voice.bus = "Voice"
+	add_child(voice)
 	rider.sound_event.connect(event)
 	rider.reset_performed.connect(_on_reset)
 
@@ -131,6 +144,7 @@ func setup_buses() -> void:
 	else:
 		reverb = AudioServer.get_bus_effect(impacts, 0)
 	ensure_bus("Nitro", "Impacts")
+	AudioServer.set_bus_volume_db(ensure_bus("Voice", "Impacts"), -1.0)
 	ensure_bus("Music", "Master") # Reserved for the player's own soundtrack. Never used here.
 
 func play(name: String, volume: float, pitch := 1.0) -> AudioStreamPlayer:
@@ -179,10 +193,31 @@ func event(kind: String, strength: float) -> void:
 		"crash":
 			stop_board()
 			play(["crash_minor", "crash_moderate", "crash_severe"][mini(rider.crash_tier(), 2)], 0.9, jitter)
+			# The first hit knocks a grunt out of the rider; harder falls hurt more.
+			say("grunt_hit_%d" % mini(rider.crash_tier(), 2), 0.7 + strength * 0.3, true)
 		"fatal":
 			stop_board()
-			play("fatal", 1.0)
-		"tumble": play("tumble_%d" % rng.randi_range(0, 2), 0.25 + strength * 0.6, rng.randf_range(0.85, 1.15))
+			if rider.last_crash_reason == "cliff fall":
+				# Still in the air: a yell all the way down, the impact comes on landing.
+				falling_fatal = true
+				say("yell_fall", 1.0, true)
+			else:
+				falling_fatal = false
+				play("fatal", 1.0)
+				say("grunt_hit_2", 1.0, true)
+		"tumble":
+			if falling_fatal:
+				falling_fatal = false
+				voice.stop()
+				play("fatal", 1.0)
+			play("tumble_%d" % rng.randi_range(0, 2), 0.3 + strength * 0.65, rng.randf_range(0.85, 1.15))
+			# Every bounce and roll of the tumble hurts a little.
+			if strength > 0.25 and not rider.fatal_crash:
+				var pick := rng.randi_range(0, 4)
+				if pick == last_grunt: pick = (pick + 1) % 5
+				last_grunt = pick
+				say("grunt_roll_%d" % pick, 0.45 + strength * 0.5, false)
+		"groan": say("groan_%d" % rng.randi_range(0, 1), 0.5 + strength * 0.4, false)
 		"getup": play("getup", 0.6)
 		"charge": play("charge_big" if strength > 0.45 else "charge_small", 0.45 + strength * 0.4)
 		"full": play("charge_full", 0.7)
@@ -192,13 +227,25 @@ func event(kind: String, strength: float) -> void:
 		"empty": play("nitro_empty", 1.0)
 		"bough": play_at("branch_brush", rider.global_position + Vector3.UP * 1.5, 0.5 + strength * 0.4, jitter)
 
+## One voice at a time: a new sound only interrupts when it matters more.
+func say(name: String, volume: float, urgent: bool) -> void:
+	if not urgent and voice_cooldown > 0.0:
+		return
+	voice.stream = streams[name]
+	voice.volume_db = linear_to_db(clampf(volume, 0.05, 1.2))
+	voice.pitch_scale = rng.randf_range(0.94, 1.07)
+	voice.play()
+	voice_cooldown = minf(voice.stream.get_length() * 0.8, 0.45)
+
 func stop_board() -> void:
-	for name in ["snow_packed", "snow_powder", "snow_ice", "carve", "skid", "nitro_loop"]:
+	for name in ["snow_packed", "snow_powder", "snow_ice", "carve", "skid", "plume", "nitro_loop"]:
 		levels[name] = 0.0
 		loops[name].volume_db = -80.0
 
 func _on_reset() -> void:
 	stop_board()
+	voice.stop()
+	falling_fatal = false
 	for v in voices:
 		v.stop()
 	land_boost = 0.0
@@ -216,7 +263,9 @@ func target_levels() -> Dictionary:
 	t["snow_ice"] = c * r * surface.y
 	t["carve"] = c * absf(rider.steer) * smoothstep(0.08, 0.55, r)
 	var slide := maxf(rider.brake_input * minf(1.0, speed / 5.0), clampf(absf(rider.lateral_slip) / 12.0, 0.0, 1.0))
-	t["skid"] = c * slide
+	# The edge starting to wash out in an over-lean chatters louder: an audible warning.
+	t["skid"] = c * maxf(slide, rider.over_lean * 0.9)
+	t["plume"] = c * rider.plume * (0.55 + 0.45 * minf(r, 1.0))
 	var air := 1.0 if rider.airborne and running else 0.0
 	# Wind: a soft breathing bed plus a dark rush that only builds at real speed.
 	var gust := 1.0 + 0.18 * gust_noise.get_noise_1d(clock) * (0.5 + exposure)
@@ -228,6 +277,7 @@ func target_levels() -> Dictionary:
 
 func _physics_process(delta: float) -> void:
 	clock += delta
+	voice_cooldown = maxf(0.0, voice_cooldown - delta)
 	global_position = rider.global_position
 	var running := rider.run.state == "running" or rider.run.state == "finished"
 	var grounded := rider.ground_contact and rider.recovery <= 0.0 and running
@@ -239,7 +289,7 @@ func _physics_process(delta: float) -> void:
 	var targets := target_levels()
 	for name in LOOPS:
 		var rate: float = LOOPS[name][2]
-		if name in ["snow_packed", "snow_powder", "snow_ice", "carve", "skid"] and not grounded:
+		if name in ["snow_packed", "snow_powder", "snow_ice", "carve", "skid", "plume"] and not grounded:
 			rate = 60.0
 		if name == "nitro_loop" and not rider.boosting:
 			rate = 4.0
@@ -257,7 +307,8 @@ func _physics_process(delta: float) -> void:
 	loops["snow_powder"].pitch_scale = 0.85 + r * 0.3
 	loops["snow_ice"].pitch_scale = 0.85 + r * 0.55
 	loops["carve"].pitch_scale = 0.8 + r * 0.4
-	loops["skid"].pitch_scale = 0.9 + r * 0.25
+	loops["skid"].pitch_scale = 0.9 + r * 0.25 + rider.over_lean * 0.25
+	loops["plume"].pitch_scale = 0.85 + r * 0.3
 	loops["wind_rush"].pitch_scale = 0.85 + r * 0.25
 	loops["cloth_flutter"].pitch_scale = 0.8 + r * 0.5
 	loops["nitro_loop"].pitch_scale = 0.92 + clampf(rider.boost_time, 0.0, 2.0) * 0.06 + r * 0.08

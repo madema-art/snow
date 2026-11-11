@@ -59,13 +59,25 @@ var ground_contact := false
 var tumble_active := false
 var tumble_pos := Vector3.ZERO
 var tumble_vel := Vector3.ZERO
-var tumble_axis := Vector3.RIGHT
-var tumble_spin := 0.0
 var tumble_basis := Basis()
 var tumble_origin := Vector3.ZERO
 var tumble_hit_cooldown := 0.0
 var getup_started := false
 var wedged := 0
+var restart_hold := 0.0
+var restart_done := false
+# Deep carving: plume (0..1 rooster tail strength), its side (+1 thrown to the
+# rider's left/-1 right, i.e. opposite the lean) and over_lean (0..1 toward tipping).
+var plume := 0.0
+var plume_side := 0.0
+var over_lean := 0.0
+var lean_side := 0.0
+var tumble_omega := Vector3.ZERO
+var tumble_time := 0.0
+var tumble_apex := 0.0
+var tumble_resting := false
+var tumble_airborne := true
+var tumble_hop := 0.0
 var leaning_normal := Vector3.ZERO
 var leaning_time := 10.0
 var _rng := RandomNumberGenerator.new()
@@ -129,7 +141,12 @@ func reset() -> void:
 	airborne = false
 	ground_contact = false
 	tumble_active = false
+	tumble_resting = false
 	getup_started = false
+	plume = 0.0
+	plume_side = 0.0
+	over_lean = 0.0
+	lean_side = 0.0
 	_rng.seed = 5521
 	safe_position = position
 	grounded_normal = SnowMountain.normal_at(0, 8)
@@ -171,6 +188,8 @@ func crash(severity: float, fatal := false, hit_normal := Vector3.ZERO, motion =
 	ollie_preload = 0
 	jump_armed = false
 	airborne = false
+	plume = 0.0
+	over_lean = 0.0
 	last_crash_severity = severity
 	fatal_crash = fatal
 	recovery_length = clampf(T.RECOVERY_MIN + severity * T.RECOVERY_PER_SEVERITY, T.RECOVERY_MIN, T.RECOVERY_MAX)
@@ -184,68 +203,122 @@ func crash(severity: float, fatal := false, hit_normal := Vector3.ZERO, motion =
 
 func start_tumble(motion: Vector3, severity: float, hit_normal: Vector3, fatal: bool) -> void:
 	tumble_active = true
+	tumble_resting = false
+	tumble_airborne = true
+	tumble_time = 0.0
+	tumble_hop = 0.2
 	tumble_pos = global_position
 	tumble_origin = global_position
+	tumble_apex = tumble_pos.y
 	tumble_basis = visual.global_basis.orthonormalized() if is_instance_valid(visual) and visual.is_inside_tree() else global_basis
 	if fatal and motion.y < -8.0:
-		tumble_vel = motion # A real fall keeps falling (presentation only; the run is over).
+		tumble_vel = motion # A real fall keeps falling.
 	elif hit_normal != Vector3.ZERO:
-		tumble_vel = motion.bounce(hit_normal.normalized()) * 0.22
+		# Thrown back off the trunk or boulder, keeping the glancing part of the speed.
+		var n := hit_normal.normalized()
+		tumble_vel = motion.bounce(n) * T.TUMBLE_REBOUND + motion.slide(n) * 0.3 + n * 2.0
 	else:
-		tumble_vel = motion * T.TUMBLE_SPEED_SHARE
-	tumble_vel.y = maxf(tumble_vel.y, 1.5 + minf(severity, 40.0) * 0.07)
-	var flat := Vector3(motion.x, 0, motion.z)
-	var axis := flat.cross(Vector3.UP).normalized() if flat.length() > 0.5 else Vector3.RIGHT
-	tumble_axis = (axis + Vector3(_rng.randf_range(-0.4, 0.4), _rng.randf_range(-0.6, 0.6), _rng.randf_range(-0.4, 0.4))).normalized()
-	tumble_spin = -(3.0 + minf(severity, 45.0) * 0.22)
+		tumble_vel = motion * T.TUMBLE_MOMENTUM
+	if is_on_floor() and not (fatal and motion.y < -8.0):
+		# Pitched off the snow: keep the along-slope momentum, add a pop off the surface.
+		tumble_vel = tumble_vel.slide(grounded_normal) + grounded_normal * (2.2 + minf(severity, 40.0) * 0.07)
+	spin_up(1.0)
 	tumble_hit_cooldown = 0.0
 
+## Angular velocity of a body cartwheeling in its direction of travel, with a
+## random wobble so no two falls look alike.
+func spin_up(blend: float) -> void:
+	var flat := Vector3(tumble_vel.x, 0, tumble_vel.z)
+	var rolling := Vector3.ZERO
+	if flat.length() > 0.3:
+		rolling = Vector3.UP.cross(flat.normalized()) * clampf(flat.length() / 0.55, 2.5, 15.0)
+	rolling += Vector3(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1), _rng.randf_range(-1, 1)) * clampf(flat.length() * 0.18, 0.5, 3.5)
+	tumble_omega = tumble_omega.lerp(rolling, blend)
+
+## Momentum physics for the fallen rider: ballistic flight, bounces off snow,
+## trunks and boulders, then a rolling, ploughing slide that follows the slope
+## until friction wins. The riding body itself stays frozen with zero speed.
 func update_tumble(delta: float) -> void:
-	if not tumble_active:
+	if not tumble_active or tumble_resting:
 		return
 	var space := get_world_3d().direct_space_state
+	tumble_time += delta
 	tumble_hit_cooldown = maxf(0.0, tumble_hit_cooldown - delta)
 	tumble_vel.y -= gravity * delta
 	var next := tumble_pos + tumble_vel * delta
 	_ray.from = tumble_pos
-	_ray.to = next
+	_ray.to = next + tumble_vel.normalized() * 0.3
 	var hit := space.intersect_ray(_ray)
 	if not hit.is_empty():
-		tumble_vel = tumble_vel.bounce(hit.normal) * 0.3
-		next = hit.position + hit.normal * 0.35
-		tumble_spin *= -0.6
+		var hit_speed := maxf(0.0, -tumble_vel.dot(hit.normal))
+		tumble_vel = tumble_vel.bounce(hit.normal) * 0.4
+		next = hit.position + hit.normal * 0.4
+		spin_up(0.8)
 		if tumble_hit_cooldown == 0.0:
-			sound_event.emit("tumble", clampf(tumble_vel.length() / 8.0 + 0.3, 0.2, 1.0))
-			tumble_hit_cooldown = 0.18
+			sound_event.emit("tumble", clampf(hit_speed / 9.0 + 0.3, 0.3, 1.0))
+			tumble_hit_cooldown = 0.16
 	var ground := SnowMountain.height_at(next.x, next.z) + 0.32
-	var current_ground := SnowMountain.height_at(tumble_pos.x, tumble_pos.z)
-	if not fatal_crash:
-		# A recoverable tumble may never carry the rider off a lip or far downhill.
-		var flat := Vector2(next.x - tumble_origin.x, next.z - tumble_origin.z)
-		if flat.length() > T.TUMBLE_MAX_TRAVEL or ground - 0.32 < current_ground - 2.5:
-			next.x = tumble_pos.x
-			next.z = tumble_pos.z
-			tumble_vel.x *= -0.1
-			tumble_vel.z *= -0.1
-			ground = current_ground + 0.32
-	if next.y <= ground:
+	# In contact when it reaches the snow, and it stays in contact (hugging rolls
+	# and convex ground) until a hop or a real drop throws it clear again.
+	if next.y <= ground or (not tumble_airborne and next.y - ground < 0.6):
 		next.y = ground
 		var n := SnowMountain.normal_at(next.x, next.z)
 		var into := tumble_vel.dot(n)
 		if into < 0.0:
-			if into < -2.5 and tumble_hit_cooldown == 0.0:
-				sound_event.emit("tumble", clampf(-into / 10.0, 0.15, 1.0))
-				tumble_hit_cooldown = 0.16
-			tumble_vel -= n * into * 1.3
-		tumble_vel = tumble_vel.move_toward(Vector3.ZERO, 7.5 * delta)
-		tumble_spin = move_toward(tumble_spin, 0.0, 7.0 * delta)
+			var impact := -into
+			var tangent := tumble_vel - n * into
+			if tumble_airborne and impact > 2.2:
+				# A real impact: lose sliding speed, bounce, re-spin, throw snow, hurt.
+				var drop := tumble_apex - next.y
+				if not fatal_crash and drop >= T.TUMBLE_FATAL_DROP:
+					fatal_crash = true
+					last_crash_reason = "tumbled off a drop"
+					sound_event.emit("fatal", 1.0)
+					run.fatal()
+				tangent *= 1.0 - T.TUMBLE_IMPACT_LOSS
+				tumble_vel = tangent + n * impact * T.TUMBLE_RESTITUTION
+				spin_up(0.7)
+				if tumble_hit_cooldown == 0.0:
+					sound_event.emit("tumble", clampf(impact / 11.0, 0.2, 1.0))
+					tumble_hit_cooldown = 0.14
+			else:
+				tumble_vel = tangent
+		tumble_airborne = false
+		tumble_apex = next.y
+		# Rolling, ploughing slide: gravity along the slope is already in tumble_vel.
+		var slide_speed := tumble_vel.length()
+		var friction := T.TUMBLE_FRICTION + T.TUMBLE_PLOW * slide_speed
+		var travelled := Vector2(next.x - tumble_origin.x, next.z - tumble_origin.z).length()
+		if tumble_time > T.TUMBLE_MAX_TIME or travelled > T.TUMBLE_MAX_TRAVEL:
+			friction *= 4.0
+		tumble_vel = tumble_vel.move_toward(Vector3.ZERO, friction * delta)
+		spin_up(clampf(6.0 * delta, 0.0, 1.0))
+		# Cartwheeling: while it still has real speed the body keeps catching the snow
+		# and being pitched back into the air, each landing another impact.
+		tumble_hop -= delta
+		if tumble_hop <= 0.0 and slide_speed > T.TUMBLE_HOP_MIN_SPEED and not tumble_resting:
+			tumble_vel += n * clampf(slide_speed * T.TUMBLE_HOP, 2.0, 7.0)
+			tumble_hop = _rng.randf_range(0.28, 0.5)
+			tumble_airborne = true
 		# As the tumble dies, the body settles onto its back with the board downslope.
-		var settle := clampf(1.0 - tumble_vel.length() / 5.0, 0.0, 1.0)
+		var settle := clampf(1.0 - tumble_vel.length() / 4.0, 0.0, 1.0)
 		if settle > 0.0:
-			tumble_basis = tumble_basis.slerp(lying_basis(n), clampf(settle * 4.0 * delta, 0.0, 1.0)).orthonormalized()
+			tumble_omega *= 1.0 - settle
+			tumble_basis = tumble_basis.slerp(lying_basis(n), clampf(settle * 5.0 * delta, 0.0, 1.0)).orthonormalized()
 			next.y = lerpf(next.y, ground - 0.08, settle * 0.5)
+		if tumble_vel.length() < 0.5 and n.y > 0.6:
+			tumble_vel = Vector3.ZERO
+			tumble_resting = true
+			if not fatal_crash and last_crash_severity >= 12.0:
+				sound_event.emit("groan", clampf(last_crash_severity / 35.0, 0.3, 1.0))
+	else:
+		if not tumble_airborne and next.y - ground > 0.6:
+			tumble_airborne = true
+			tumble_apex = next.y
+		tumble_apex = maxf(tumble_apex, next.y)
 	tumble_pos = next
-	tumble_basis = (Basis(tumble_axis, tumble_spin * delta) * tumble_basis).orthonormalized()
+	if tumble_omega.length() > 0.01:
+		tumble_basis = (Basis(tumble_omega.normalized(), tumble_omega.length() * delta) * tumble_basis).orthonormalized()
 
 func lying_basis(n: Vector3) -> Basis:
 	var x := -n
@@ -359,24 +432,29 @@ func standable(candidate: Vector3) -> bool:
 	probe.motion = to - candidate
 	return space.cast_motion(probe)[0] >= 0.99
 
-## Where the rider stands up: where the tumble actually came to rest when that
-## spot is safe and close; otherwise the conservative safe/recovery point.
+## Where the rider stands up: where the tumble actually came to rest. If that
+## exact spot is not safe to stand on (steep, boxed in, inside scenery) the nearest
+## clear spot around it; only as a last resort the place the fall began.
 func getup_point() -> Vector3:
 	var candidate := Vector3(tumble_pos.x, SnowMountain.height_at(tumble_pos.x, tumble_pos.z) + 0.72, tumble_pos.z)
-	var travel := Vector2(candidate.x - tumble_origin.x, candidate.z - tumble_origin.z).length()
-	if travel <= T.TUMBLE_MAX_TRAVEL + 0.5 and absf(candidate.y - safe_position.y) < 5.0 and standable(candidate):
-		_ray.from = tumble_origin + Vector3.UP * 0.4
-		_ray.to = candidate + Vector3.UP * 0.4
-		if get_world_3d().direct_space_state.intersect_ray(_ray).is_empty():
-			return candidate
-	return safe_position
+	if standable(candidate):
+		return candidate
+	var around := recovery_point(candidate, SnowMountain.normal_at(candidate.x, candidate.z))
+	return around
 
 func _physics_process(delta: float) -> void:
 	var just_pushed_off := false
-	if Input.is_action_just_pressed("restart"):
-		run.restart()
-		reset()
-		return
+	# Restart is held briefly so a stray tap can never throw a run away.
+	if Input.is_action_pressed("restart"):
+		restart_hold += delta
+		if restart_hold >= T.RESTART_HOLD and not restart_done:
+			restart_done = true # one restart per hold
+			run.restart()
+			reset()
+			return
+	else:
+		restart_hold = 0.0
+		restart_done = false
 	update_tumble(delta)
 	if run.state == "finished":
 		coast(delta)
@@ -402,6 +480,9 @@ func _physics_process(delta: float) -> void:
 	leaning_time += delta
 	if recovery > 0.0:
 		recovery = maxf(0.0, recovery - delta)
+		# Nobody stands up while still tumbling: the get-up waits for the body to rest.
+		if tumble_active and not tumble_resting and not getup_started:
+			recovery = maxf(recovery, T.GETUP_TIME + 0.45)
 		velocity = Vector3.ZERO
 		if recovery <= T.GETUP_TIME and not getup_started:
 			getup_started = true
@@ -430,8 +511,9 @@ func _physics_process(delta: float) -> void:
 	speed = Vector2(velocity.x, velocity.z).length()
 	# Ignore cached CharacterBody contact from the previous run on the push-off tick.
 	var ground := is_on_floor() and not just_pushed_off
-	brake_input = Input.get_action_strength("brake")
-	tuck_input = Input.get_action_strength("tuck")
+	# Left stick forward crouches into a tuck, back brakes (triggers do the same).
+	brake_input = maxf(Input.get_action_strength("brake"), Input.get_action_strength("lean_back"))
+	tuck_input = maxf(Input.get_action_strength("tuck"), Input.get_action_strength("lean_forward"))
 	var brake := brake_input
 	var tuck := tuck_input
 	if Input.is_action_just_pressed("jump") and not just_pushed_off:
@@ -456,7 +538,29 @@ func _physics_process(delta: float) -> void:
 		# Carve: yaw rate is limited by the lateral acceleration an edge can hold, so
 		# low speed pivots easily and high speed demands committed, earlier turns.
 		var max_yaw := minf(T.PIVOT_RATE, T.CARVE_ACCEL / maxf(speed, 1.0)) * (1.0 + brake * T.SKID_TURN_BONUS)
+		# Deep lean: past DEEP_LEAN_START the board turns tighter and throws a plume
+		# of snow out the far side -- but held too long the edge washes out.
+		var deep := smoothstep(T.DEEP_LEAN_START, 1.0, absf(raw))
+		max_yaw *= 1.0 + T.DEEP_LEAN_TURN_BONUS * deep * (1.0 - brake)
 		yaw_rate = -steer * max_yaw
+		var plume_target := smoothstep(T.PLUME_START, T.PLUME_FULL, absf(steer)) * smoothstep(T.PLUME_MIN_SPEED, T.PLUME_FULL_SPEED, speed)
+		plume = lerpf(plume, plume_target, 1.0 - exp(-10.0 * delta))
+		if absf(steer) > 0.05:
+			plume_side = signf(steer)
+		if signf(raw) != lean_side:
+			lean_side = signf(raw)
+			over_lean *= 0.3 # switching edges brings the rider back through upright
+		var tipping := deep * smoothstep(T.OVERLEAN_MIN_SPEED, T.OVERLEAN_FULL_SPEED, speed) * (1.0 - smoothstep(0.2, 0.5, brake))
+		if tipping > 0.0:
+			over_lean += tipping * delta / T.OVERLEAN_TIME
+		else:
+			over_lean = maxf(0.0, over_lean - delta / T.OVERLEAN_RECOVER)
+		if over_lean >= 1.0:
+			last_crash_reason = "over-lean"
+			# The edge lets go: the rider is flung low-side along the direction of travel.
+			crash(maxf(6.0, speed * 0.45), false, Vector3.ZERO, velocity + grounded_normal.cross(forward()) * signf(steer) * 3.0)
+			update_visual(delta)
+			return
 		# Looking downhill along +Z, screen-right is world -X.
 		heading += yaw_rate * delta
 		var fwd := forward().slide(grounded_normal).normalized()
@@ -489,6 +593,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		since_ground += delta
 		yaw_rate = 0.0
+		plume = lerpf(plume, 0.0, 1.0 - exp(-14.0 * delta))
+		over_lean = maxf(0.0, over_lean - delta / T.OVERLEAN_RECOVER)
 		if jump_armed and not Input.is_action_pressed("jump"):
 			if since_ground <= T.COYOTE_TIME and previous_ground_recent():
 				pop(grounded_normal)
