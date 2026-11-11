@@ -3,7 +3,8 @@ extends CanvasLayer
 ## The ONLY interface in SNOW. Hidden while riding (no HUD of any kind). Shown on
 ## Menu, on controller disconnect / window focus loss mid-run, and after a finish
 ## or fatal crash (after a short beat so the moment can be seen). Shows elapsed
-## hundredths, the ten fastest completed descents, remapping and
+## hundredths, the Day / Night choice, the ten fastest completed descents of the
+## selected time of day, remapping and
 ## resume / restart / quit. Fixed controller navigation: D-pad/LS move, A accept,
 ## B back, Menu toggles or cancels capture.
 const ACCENT := Color("ff7a2a")
@@ -21,6 +22,8 @@ var clock: Label
 var records_label: RichTextLabel
 var mapping_hint: Label
 var resume: Button
+var mode_button: Button
+var records_title: Label
 var mapping_buttons: Dictionary = {}
 var capturing := ""
 var neutral_axes: Dictionary = {}
@@ -143,18 +146,23 @@ func build() -> void:
 	rule.color = Color(1, 1, 1, 0.15)
 	rule.custom_minimum_size = Vector2(1180, 3)
 	left.add_child(rule)
-	left.add_child(label("FASTEST COMPLETED DESCENTS", 34, MUTED))
+	records_title = label("FASTEST DAY DESCENTS", 34, MUTED)
+	left.add_child(records_title)
 	records_label = RichTextLabel.new()
 	records_label.bbcode_enabled = true
 	records_label.fit_content = true
 	records_label.scroll_active = false
-	records_label.custom_minimum_size = Vector2(1180, 560)
+	records_label.custom_minimum_size = Vector2(1180, 500)
 	records_label.add_theme_font_size_override("normal_font_size", 42)
 	records_label.add_theme_font_size_override("bold_font_size", 42)
 	records_label.add_theme_constant_override("line_separation", 6)
 	left.add_child(records_label)
 	resume = button("Resume", hide_menu)
 	left.add_child(resume)
+	# Day / Night: free to change at the summit and after a run, locked while the
+	# clock is running. The change is applied to the world behind the menu at once.
+	mode_button = button("", toggle_mode)
+	left.add_child(mode_button)
 	left.add_child(button("Restart from summit", restart))
 	left.add_child(button("Quit", func(): get_tree().quit()))
 	var right := VBoxContainer.new()
@@ -209,9 +217,13 @@ func refresh() -> void:
 		_:
 			status.text = "The clock is stopped while paused."
 	resume.disabled = run.state in ["finished", "ended"]
+	var mode_name := "Night" if run.mode == "night" else "Day"
+	mode_button.disabled = not run.can_change_mode()
+	mode_button.text = "Time of day:  %s%s" % [mode_name, "     (locked during a run)" if mode_button.disabled else ""]
+	records_title.text = "FASTEST %s DESCENTS" % mode_name.to_upper()
 	var text := ""
 	if run.records.is_empty():
-		text = "[color=#8ea3b8]No completed descents yet.[/color]"
+		text = "[color=#8ea3b8]No completed %s descents yet.[/color]" % mode_name.to_lower()
 	for i in run.records.size():
 		var line := "%2d      %s" % [i + 1, SnowRun.clock_text(run.records[i])]
 		if i == last_record_rank and run.state == "finished":
@@ -239,6 +251,13 @@ func show_menu() -> void:
 		resume.find_next_valid_focus().grab_focus()
 	else:
 		resume.grab_focus()
+
+## Switch between Day and Night (refused by SnowRun during a timed descent).
+func toggle_mode() -> void:
+	if run.toggle_mode():
+		last_record_rank = -1 # the highlighted time belongs to the other leaderboard
+	refresh()
+	mode_button.grab_focus()
 
 func hide_menu() -> void:
 	if run.state in ["finished", "ended"]:

@@ -258,7 +258,10 @@ func refresh_charge(charge: float) -> void:
 	if rider != null and rider.boosting:
 		flare = 1.25 + 0.2 * sin(time * 47.0)
 	board_material.emission_energy_multiplier = charge * charge * 4.5 * flare + charge * 0.8
-	lamp.light_energy = charge * 1.6 * flare
+	# At night the charged board throws its glow onto the snow around it.
+	var night := SnowAtmosphere.night_amount
+	lamp.light_energy = charge * 1.6 * flare * lerpf(1.0, 2.6, night)
+	lamp.omni_range = lerpf(3.5, 7.0, night)
 
 func reset_pose(start: Basis) -> void:
 	basis = start

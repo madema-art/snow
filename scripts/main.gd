@@ -8,6 +8,10 @@ func _ready() -> void:
 	var mountain := SnowMountain.new()
 	mountain.name = "Mountain"
 	add_child(mountain)
+	# Time of day: the remembered choice applies at once on launch, later changes
+	# (only possible outside a timed run) cross-fade.
+	mountain.atmosphere.set_mode(run.mode, true)
+	run.mode_changed.connect(func(mode: String): mountain.atmosphere.set_mode(mode))
 	var rider := SnowRider.new()
 	rider.name = "Rider"
 	rider.run = run
@@ -41,3 +45,7 @@ func _ready() -> void:
 	menu.camera = camera
 	menu.music = music
 	add_child(menu)
+	var title := SnowTitle.new()
+	title.name = "Title"
+	title.run = run
+	add_child(title)

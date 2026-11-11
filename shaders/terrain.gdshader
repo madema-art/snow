@@ -12,7 +12,9 @@ uniform vec3 rock_dark : source_color = vec3(0.16, 0.155, 0.15);
 uniform vec3 rock_light : source_color = vec3(0.42, 0.40, 0.37);
 uniform vec2 wind_dir = vec2(0.92, 0.38);
 uniform float detail_strength = 1.0;
-uniform vec3 sun_direction = vec3(-0.904, 0.425, 0.053);
+uniform vec3 sun_direction = vec3(-0.904, 0.425, 0.053);   // toward the sun, or the moon at night
+uniform float night = 0.0;                                 // 0 day .. 1 night
+uniform vec3 aurora_tint = vec3(0.10, 0.55, 0.36);
 
 varying vec3 wpos;
 varying vec4 surf;
@@ -69,17 +71,36 @@ void fragment() {
 	snow = mix(snow, snow * vec3(0.86, 0.91, 1.0), clamp((sas_amp > 0.0 ? ripple(p) : 0.0) * 0.35 * near_fade, 0.0, 0.3));
 	float ao = surf.a;
 	ALBEDO = mix(snow, rock_col, rock) * mix(0.55, 1.0, ao);
-	ROUGHNESS = mix(mix(0.72, 0.88, powder) * (1.0 - ice * 0.55), 0.92, rock);
-	SPECULAR = mix(0.42, 0.25, rock);
-	// Glints: sparse crystal facets that catch the sun at particular view angles.
-	vec3 cell = floor(wpos * 7.0);
-	float g = hash13(cell);
-	vec3 in_cell = fract(wpos * 7.0) - vec3(hash13(cell + 2.1), 0.5, hash13(cell + 8.4));
-	float dot_mask = 1.0 - smoothstep(0.03, 0.08, length(in_cell.xz));
-	vec3 facet = normalize(vec3(hash13(cell + 1.7), 1.6, hash13(cell + 5.3)) - vec3(0.5, 0.0, 0.5));
+	// Moonlit snow is glossier: a soft silver sheen and a glitter path toward the moon.
+	ROUGHNESS = mix(mix(0.72, 0.88, powder) * (1.0 - ice * 0.55) * mix(1.0, 0.72, night), 0.92, rock);
+	SPECULAR = mix(mix(0.42, 0.62, night), 0.25, rock);
+	// Crystal glints: facets fixed in the snow that flash when they line up with
+	// the light. Two scales; each dot grows with distance so it never drops below
+	// about a pixel (no shimmer at speed) and fades out before it could alias.
 	vec3 view_w = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
-	vec3 sun_w = normalize(sun_direction);
-	float spark = pow(max(dot(reflect(-sun_w, facet), view_w), 0.0), 90.0) * step(0.8, g) * dot_mask;
-	EMISSION = vec3(1.0, 0.97, 0.9) * spark * near_fade * (1.0 - rock) * (1.0 - powder * 0.5) * 1.6;
+	vec3 light_w = normalize(sun_direction);
+	float sparkle = 0.0;
+	for (int layer = 0; layer < 2; layer++) {
+		float scale = layer == 0 ? 7.0 : 2.6;
+		float reach = layer == 0 ? 60.0 : 170.0;
+		vec3 q = wpos * scale;
+		vec3 cell = floor(q);
+		float g = hash13(cell + float(layer) * 31.0);
+		vec3 in_cell = fract(q) - vec3(0.25 + 0.5 * hash13(cell + 2.1), 0.5, 0.25 + 0.5 * hash13(cell + 8.4));
+		float radius = clamp(0.05 + dist * scale * 0.0011, 0.05, 0.24);
+		float dot_mask = 1.0 - smoothstep(radius * 0.5, radius, length(in_cell.xz));
+		vec3 facet = normalize(vec3(hash13(cell + 1.7), 1.6, hash13(cell + 5.3)) - vec3(0.5, 0.0, 0.5));
+		float aligned = pow(max(dot(reflect(-light_w, facet), view_w), 0.0), mix(90.0, 36.0, night));
+		float density = step(mix(0.8, 0.62, night), g);
+		sparkle += aligned * density * dot_mask * (0.05 / radius) * (1.0 - smoothstep(reach * 0.5, reach, dist));
+	}
+	vec3 glint = mix(vec3(1.0, 0.97, 0.9) * 1.6, vec3(0.72, 0.85, 1.0) * 2.4, night);
+	float open_snow = (1.0 - rock) * (1.0 - powder * 0.5);
+	EMISSION = glint * sparkle * open_snow;
+	// Night only: a cold frost sheen at grazing angles and the faintest breath of
+	// aurora colour on open, sky-facing snow. Moonlight stays the main light.
+	float grazing = pow(1.0 - max(dot(detail_n, view_w), 0.0), 4.0);
+	float aurora_wash = 0.6 + 0.4 * vnoise(p * 0.004 + vec2(TIME * 0.01, 0.0));
+	EMISSION += night * (1.0 - rock) * (vec3(0.20, 0.32, 0.60) * grazing * 0.035 + aurora_tint * aurora_wash * smoothstep(0.6, 0.95, nw.y) * 0.02);
 	NORMAL = normalize((VIEW_MATRIX * vec4(detail_n, 0.0)).xyz);
 }
