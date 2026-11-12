@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- SNOW app icon. Editable source: tools/render_branding.js renders this to PNG,
+       tools/make_icon.py packs the PNGs into branding/snow.ico. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070d1f"/>
+      <stop offset="0.55" stop-color="#0f2447"/>
+      <stop offset="1" stop-color="#1c4370"/>
+    </linearGradient>
+    <linearGradient id="aurora" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#25f0a0" stop-opacity="0"/>
+      <stop offset="0.3" stop-color="#2ff5a8" stop-opacity="0.95"/>
+      <stop offset="0.65" stop-color="#27d6e6" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#8a5cf0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dbe8fb"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a9c1e6"/>
+      <stop offset="1" stop-color="#5f7fb4"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6f8fc4"/>
+      <stop offset="1" stop-color="#2d4c80"/>
+    </linearGradient>
+    <linearGradient id="carve" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff5a14"/>
+    </linearGradient>
+    <radialGradient id="moonglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#cfe0ff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#cfe0ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="14"/></filter>
+    <clipPath id="tile"><rect x="32" y="32" width="960" height="960" rx="214"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect x="32" y="32" width="960" height="960" fill="url(#sky)"/>
+    <!-- aurora ribbons -->
+    <path d="M -20 330 C 180 190, 360 300, 540 220 S 880 120, 1060 230" fill="none" stroke="url(#aurora)" stroke-width="120" filter="url(#soft)" opacity="0.8"/>
+    <path d="M -20 430 C 220 330, 420 420, 620 340 S 900 300, 1060 380" fill="none" stroke="url(#aurora)" stroke-width="54" filter="url(#soft)" opacity="0.55"/>
+    <!-- stars -->
+    <g fill="#ffffff">
+      <circle cx="170" cy="170" r="7"/><circle cx="330" cy="120" r="5"/><circle cx="470" cy="165" r="4"/>
+      <circle cx="610" cy="110" r="6"/><circle cx="880" cy="150" r="5"/><circle cx="250" cy="275" r="4"/>
+      <circle cx="905" cy="400" r="5"/><circle cx="120" cy="420" r="4"/>
+    </g>
+    <!-- moon -->
+    <circle cx="742" cy="268" r="170" fill="url(#moonglow)"/>
+    <circle cx="742" cy="268" r="84" fill="#f6f1df"/>
+    <circle cx="716" cy="244" r="20" fill="#e3dcc4" opacity="0.7"/><circle cx="770" cy="296" r="14" fill="#e3dcc4" opacity="0.6"/>
+    <!-- far ridge -->
+    <path d="M 20 860 L 250 520 L 350 640 L 430 560 L 560 760 L 20 1000 Z" fill="url(#far)"/>
+    <path d="M 560 1000 L 760 600 L 850 700 L 930 620 L 1010 760 L 1010 1000 Z" fill="url(#far)" opacity="0.9"/>
+    <!-- the peak: lit face and shadowed face -->
+    <path d="M 512 250 L 930 1000 L 94 1000 Z" fill="url(#lit)"/>
+    <path d="M 512 250 L 930 1000 L 610 1000 L 566 760 L 606 620 L 540 470 Z" fill="url(#shade)"/>
+    <!-- carve line: the board's glowing track down the face -->
+    <path d="M 500 330 C 430 470, 560 520, 470 660 S 520 860, 400 990" fill="none" stroke="#ff7a2a" stroke-width="54" stroke-linecap="round" filter="url(#glow)" opacity="0.75"/>
+    <path d="M 500 330 C 430 470, 560 520, 470 660 S 520 860, 400 990" fill="none" stroke="url(#carve)" stroke-width="34" stroke-linecap="round"/>
+  </g>
+  <rect x="32" y="32" width="960" height="960" rx="214" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="6"/>
+</svg>

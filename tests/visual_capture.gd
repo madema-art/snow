@@ -133,6 +133,8 @@ func shot(name: String, s: Array) -> void:
 	var speed: float = s[4] if s[4] > 1.0 else 0.0
 	rider.velocity = Vector3(sin(rider.heading), 0, cos(rider.heading)) * speed
 	rider.speed = speed
+	if name == "snow_close":
+		camera.distance = 3.0
 	if name == "nitro":
 		rider.nitro = 0.95
 		rider.visual.refresh_charge(0.95)
@@ -148,7 +150,7 @@ func shot(name: String, s: Array) -> void:
 	if name == "rider_close":
 		camera.distance = 3.2
 	for i in 50:
-		if name in ["rider_close", "rider_carve", "nitro", "tree_close"]:
+		if name in ["rider_close", "rider_carve", "nitro", "tree_close", "snow_close"]:
 			camera.distance = 3.4
 		await physics_frame
 		await process_frame

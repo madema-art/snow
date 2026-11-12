@@ -1,0 +1,4 @@
+# Written by the launcher on each start; never committed.
+*.log
+*_notice.txt
+godot_path.txt
