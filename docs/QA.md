@@ -1,4 +1,4 @@
-# QA and reproducible validation — pass 3
+# QA and reproducible validation — pass 6
 
 Godot can exit 0 after a script error: always grep logs for `SCRIPT ERROR` / `ERROR` and `FAIL`. Keep logs and renders in the git-ignored `work/` folder. All persistence fixtures use disposable `user://test_*.json` files and delete them.
 
@@ -23,13 +23,13 @@ godot --headless --path . --fixed-fps 60 --script res://tests/prototype_test.gd
 
 4K/VSync config, buses, RS deadzone, stationary start, push-off, ollie, airborne RS independence, midair pause, clean landing charge, partial boost, trick vs plain reward, bad landing, full wipe on crash, board darkening, recovery time, remap/conflict/persist/migration, fixed Menu/A/D-pad navigation, top ten, hundredths, restart, brake, carve direction, severity, real tree impacts (fatal and moderate), get-up, real 100 m fall. Expect `TESTS COMPLETE: 0 failures`.
 
-## 3. Pass-3 feel systems
+## 3. Feel systems, Day/Night, soundtrack
 
 ```bash
 godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 ```
 
-Pass 5: momentum tumbles (faster falls travel farther, body frozen at zero riding speed, several impacts, groan, get-up at rest), fatal tumble over the gorge lip (fixture), first-hit and rolling grunts, plume from a committed carve without tipping, over-lean fall after ~1.9 s at full lock, braking exception, left stick forward tuck / back brake / deadzone via real joypad events, restart needs a hold, View cycles camera range and persists, older saved mappings upgrade without losing remaps. Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
+Pass 6: a fresh install is Day; the selector exists and is enabled at the summit; choosing Night applies and cross-fades while the game is paused; the music player and its position are untouched by the change; the choice is saved and reloaded; the selector is disabled and `set_mode` refused mid-run; the launch title is gone once riding; no CanvasLayer item is visible during a descent (no HUD); a Night finish is recorded only in the Night file and list; the mode can be changed again after the run; the menu shows the selected mode's leaderboard and title; both files reload separately; switching back restores the exact Day lighting values; branding and launcher files are in place. Pass 5: momentum tumbles (faster falls travel farther, body frozen at zero riding speed, several impacts, groan, get-up at rest), fatal tumble over the gorge lip (fixture), first-hit and rolling grunts, plume from a committed carve without tipping, over-lean fall after ~1.9 s at full lock, braking exception, left stick forward tuck / back brake / deadzone via real joypad events, restart needs a hold, View cycles camera range and persists, older saved mappings upgrade without losing remaps. Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
 ## 4. Local terrain / shortcut fixtures
 
@@ -57,6 +57,14 @@ xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 16
 ```
 
 Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro`/`ride_plume`/`ride_tumble` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
+
+Night Mode: add `--night` to the args; every requested shot is rendered at night and saved with a `_night` suffix. Night-specific views: `sky_moon`, `sky_aurora`, `sky_up` (summit, camera tilted to the sky), `snow_close` (low camera over the glints), `slope_night`; `pause` focuses the Time of day line. Example:
+
+```bash
+xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/visual_capture.gd -- --night summit sky_moon sky_aurora snow_close slope_night nitro forest pause
+```
+
+Software GL shows composition, colour and readability only; it says nothing about frame rate, and the finest glints/stars look different on a real GPU at 4K.
 
 ## 7. Real ride recording (video + the game's actual audio mix)
 
@@ -94,7 +102,21 @@ xvfb-run -a -s "-screen 0 3840x2160x24" godot --path . --resolution 3840x2160 --
 
 Prints startup generation time and per-region draw calls, primitives and objects for the real chase view at 4K. Counts are hardware-independent; on Windows with the RTX GPU, run without xvfb (and use `tests/massif_capture.gd` for per-viewport GPU timing on an explicit 3840x2160 SubViewport). Frame times from software GL are meaningless and must not be reported as performance.
 
+## 9. Launcher scripts (Linux, under wine)
+
+```bash
+sudo apt-get install -y wine64 gcc-mingw-w64-x86-64   # once
+tests/launcher/run_launcher_tests.sh
+```
+
+Builds stand-in `git.exe`, `where.exe` and a fake Godot (they log their arguments and return scripted exit codes), copies the real `launcher/` scripts into a scratch project whose path contains spaces and parentheses, converts them to CRLF as a Windows checkout would have, and runs them with wine's `cmd`/`cscript`. Covered: up to date (no merge attempted); update available (generated metadata restored, then fast-forward, correctly quoted path); offline (silent, nothing merged); blocked update (notice written, cleared on the next good run); git missing (notice); the updater never resets or forces; first launch imports headlessly and remembers the version; same version does not re-import; a new version re-imports once; Godot missing (notice); `godot_path.txt` override; the game is always started with `--path` and never `--editor`; `Play-Snow.bat`; and the hidden `Start-Snow.vbs` end to end, online and offline. Expect `LAUNCHER TESTS fail=0`.
+
+This checks the scripts' logic with wine's command interpreter. It does not run Windows, real Git, real Godot or PowerShell, so `Create-Shortcut.bat` (a PowerShell one-liner) is NOT covered and message-box/hidden-window behaviour is not observed.
+
 ## Manual tests still required on the target PC
+
+- **Launch:** run `launcher\Create-Shortcut.bat`; the Desktop icon looks right at small and large sizes; double-click starts the game with no console and no editor; an update pushed to `main` arrives on the next launch; unplugged network still launches; splash and wordmark appear and do not delay push-off.
+- **Night Mode:** readability of trees, rocks and drop lips at full speed in every region; that the snow glitter is stable and not noisy at 4K; aurora and Milky Way strength; moon size; rider and board glow; and sustained 60 FPS at 3840x2160 in Night (sky shader cost) as well as Day.
 
 - **Xbox controller:** LS carve feel at 20/60/120 km/h, edge engagement, brake skid, tuck, A preload/release timing, coyote at lips, LB/RB/D-pad/X air tricks, RS free look at speed and in the air (look behind while riding forward), idle settle, RS-click recenter, haptics (snow texture, landings, crash tiers, nitro, empty sputter), disconnect → pause → reconnect → resume, remap every action, persistence across relaunch, menu navigation with D-pad/LS/A/B/Menu.
 - **Listening (headphones and speakers):** surface transitions, air→landing transition, wind build-up and forest shelter, nitro ignite/sustain/deplete identity, empty sputter recognisability, crash weight, limiter behaviour, overall loudness.

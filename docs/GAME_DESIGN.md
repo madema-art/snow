@@ -1,4 +1,4 @@
-# Game design — pass 5
+# Game design — pass 6
 
 **One snowboarder. One enormous mountain. One objective: reach the bottom as fast as possible.**
 
@@ -26,6 +26,7 @@ SNOW puts the player alone on the summit of the Massif. There are no runs, signs
 - **Fatal:** large cliff drops and gorge falls (real apex-to-ground distance), and extreme direct impacts into trees/rocks/walls end the run. The moment plays out, then results appear. Fatal runs never enter the records.
 - **Finish:** a timber gate with banners and pennant lines at the valley floor. Crossing it stops the clock; the rider skids to a stop; results show the time and its top-ten rank.
 - **Restart:** hold Y for about a third of a second (or use the menu); it restores summit, stillness, zero nitro, zero speed, zero time and fresh state instantly.
+- **Time of day:** Day or Night, chosen on one line of the pause menu. Changeable at the summit before push-off and again after a run ends or is restarted; locked while the clock is running (the line says so and cannot be changed). The world cross-fades in about a second and a half behind the menu, the soundtrack carries on untouched, the choice is remembered, and a fresh install is Day. Geometry, hazards, physics, routes and controls are identical; only the light changes. Each mode has its own top ten and the menu shows the list for the selected mode.
 - **Pause:** Menu, controller disconnect, or loss of window focus mid-run. Pause freezes physics, timer, camera, audio and particles (midair too).
 
 ## Camera
@@ -34,7 +35,13 @@ The right stick is a free look that is held relative to the direction of travel,
 
 ## Presentation targets
 
-Cinematic, realistic-leaning daylight: low raking sun, blue-white shadowed snow, atmospheric depth over kilometres, serrated surrounding ranges, snow-loaded conifers, faceted stone and cliff outcrops, wind ripples and glints on snow, spray, powder bursts and persistent board tracks. Speed should feel distinct at 20, 60 and 120 km/h through FOV, framing, spray, wind layers, whistle/flutter, passing-tree whooshes and rumble — never through screen-obscuring effects.
+**Day.** Cinematic, realistic-leaning daylight: low raking sun, blue-white shadowed snow, atmospheric depth over kilometres, serrated surrounding ranges, snow-loaded conifers, faceted stone and cliff outcrops, wind ripples and glints on snow, spray, powder bursts and persistent board tracks.
+
+**Night.** The same mountain on a clear night at altitude. A bright moon ahead and to the left of the fall line is the one real light, and its direction matches the disc in the sky, so shadows fall the right way. Above it: a dense field of stars in three sizes with a few warm and blue ones, the Milky Way with dust lanes arching over the valley, and aurora in slow layered curtains — green, cyan and turquoise first, violet above and a pale pink hem, never neon. Snow is silver-blue, a little glossier than by day, with two layers of crystal glints that are fixed to the snow (they sparkle as the view moves, they do not flicker in place) and a faint aurora wash on open slopes. Ridges and peaks read as moonlit faces against black shadow sides. Visibility comes from moonlight, sky light and the snow itself; there is no headlamp, spotlight or screen-space brightening around the rider. Hazards must stay readable at speed: trunks and rock are dark shapes on bright snow, and drop lips keep their scoured dark edge. The rider's clothes pick up a soft rim so the silhouette separates from the slope. The nitro board glow is the one warm thing in the scene and lights a wider pool of snow than by day.
+
+**Both.** Speed should feel distinct at 20, 60 and 120 km/h through FOV, framing, spray, wind layers, passing-tree whooshes and rumble — never through screen-obscuring effects.
+
+**Launch.** Starting the game shows a dark splash with the SNOW mark while the mountain is built, then the summit with the wordmark fading over it for a few seconds. It never blocks input: pushing off, pausing or simply waiting removes it. No intro, no countdown.
 
 ## Exclusions (locked)
 

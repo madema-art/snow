@@ -6,13 +6,30 @@ Repository: <https://github.com/madema-art/snow> (main branch is what the local 
 
 ## Play (Windows, local)
 
-Double-click `Start-Snow.bat`. It runs `git pull --ff-only origin main` in the project folder, then opens the project in Godot (`D:\godot\Godot_v4.7.2-stable_win64.exe`); press F5 to play. Or run the game directly:
+**One-time setup:** double-click `launcher\Create-Shortcut.bat`. A **SNOW** icon (mountain, moon and aurora) appears on the Desktop.
+
+**From then on:** double-click the SNOW icon. With no console window and no Godot editor it quietly updates from GitHub `main`, imports anything new, and starts the game. No internet? It just starts. Details, files and troubleshooting: [launcher/README.md](launcher/README.md).
+
+- `Play-Snow.bat` does the same with a visible console (fallback).
+- `launcher\Open-Editor.bat` opens the project in the Godot editor (development).
+- `launcher\Repair-Snow.bat` is for the rare case where SNOW says an update could not be applied: it saves local changes (stash + `snow-local-backup` branch) and then matches GitHub.
+- `Start-Snow.bat` is the old editor launcher, left untouched for now so existing copies update cleanly.
+
+Godot is expected at `D:\godot\Godot_v4.7.2-stable_win64.exe`; put a different path in `launcher\godot_path.txt` if it lives elsewhere. To run by hand:
 
 ```powershell
 & 'D:\godot\Godot_v4.7.2-stable_win64.exe' --path 'D:\Snow'
 ```
 
 Shipped target: 3840x2160 fullscreen, VSync, 60 FPS render cap, 60 Hz physics, no graphics menu. Developer window: append `--windowed --resolution 1280x720`.
+
+## Day and Night
+
+The pause menu has one extra line: **Time of day: Day / Night**. It can be changed at the summit before pushing off and again after a run or restart; it is locked while a timed descent is in progress. The choice is remembered, and a fresh install starts in Day.
+
+Night is the same mountain, physics and course under a full moon: stars, the Milky Way, slow aurora curtains, silver-blue moonlit snow that glitters, and a board whose nitro glow lights the snow around it. There is no headlamp or spotlight; you ride by moonlight.
+
+Day and Night keep **separate top tens**; the menu shows the list for the selected mode.
 
 ## Develop anywhere (cloud / Linux)
 
@@ -46,7 +63,7 @@ Every action except left-stick steering and Menu can be remapped in the pause me
 
 ## Rules
 
-- No HUD while riding: no clock, speed, nitro bar, score, minimap, prompts or arrows. The pause/results screen alone shows elapsed time (hundredths), the ten fastest **completed** descents and the control mapping.
+- No HUD while riding: no clock, speed, nitro bar, score, minimap, prompts or arrows. The pause/results screen alone shows elapsed time (hundredths), the ten fastest **completed** descents for the selected time of day, the Day/Night selector and the control mapping. A wordmark fades over the summit for a few seconds at launch and is gone before or the moment you push off.
 - The board is the only nitro meter: dark when empty, orange as it charges, luminous near full, dimming as boost burns.
 - Landed jumps and tricks build nitro: bigger air, bigger drops, harder spins/flips/grabs and combinations pay more; clean landings pay more than sketchy ones; repeating the same trick (or spamming hops) quickly stops paying.
 - Falls are momentum physics: the rider is thrown with the speed they had, bounces, rolls and slides to rest (grunting all the way), then gets up there. A tumble that carries over a real drop is fatal.
@@ -55,7 +72,17 @@ Every action except left-stick steering and Menu can be remapped in the pause me
 
 ## Saves
 
-Course records: `user://snow_records_massif_v3.json` (the mountain was reshaped in pass 4, so it has its own top ten; older record files are kept untouched). Controls: `user://snow_controls_v2.json`. On Windows: `%APPDATA%\Godot\app_userdata\SNOW\`. Tests only use disposable `test_*` files.
+All under `user://` (`%APPDATA%\Godot\app_userdata\SNOW\` on Windows), never touched by updates:
+
+| File | Contents |
+|---|---|
+| `snow_records_massif_v3.json` | Day top ten (the existing records file, unchanged, so earlier times are kept as Day times) |
+| `snow_records_massif_v3_night.json` | Night top ten |
+| `snow_settings.json` | Selected time of day |
+| `snow_controls_v2.json` | Button mapping |
+| `snow_camera.json` | Camera distance |
+
+Older record files (v2 and earlier) are kept untouched. Tests only use disposable `test_*` files.
 
 ## Documentation
 
@@ -69,8 +96,9 @@ Course records: `user://snow_records_massif_v3.json` (the mountain was reshaped 
 | [docs/QA.md](docs/QA.md) | Exact validation commands (cloud and Windows) |
 | [docs/BUILD_STATUS.md](docs/BUILD_STATUS.md) | What is implemented, measured results, what still needs hands-on testing |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Locked decisions |
+| [launcher/README.md](launcher/README.md) | How the Windows launch, update and shortcut work |
 
-All art, animation and sound effects are original and procedural/synthesized in this repository (no downloaded assets). 
+All art, animation, sound effects, the icon and the splash are original and procedural/synthesized in this repository (no downloaded assets). Icon and splash sources: `branding/source/*.svg` (rebuild with `node tools/render_branding.js` then `python3 tools/make_icon.py`).
 
 ## Soundtrack
 
