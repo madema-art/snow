@@ -155,7 +155,8 @@ func _ready() -> void:
 	add_child(atmosphere)
 	terrain_material = ShaderMaterial.new()
 	terrain_material.shader = preload("res://shaders/terrain.gdshader")
-	terrain_material.set_shader_parameter("sun_direction", SnowAtmosphere.SUN_DIRECTION)
+	atmosphere.lit_materials.append(terrain_material)
+	atmosphere.apply()
 	tree_material = ShaderMaterial.new()
 	tree_material.shader = preload("res://shaders/tree.gdshader")
 	rock_material = ShaderMaterial.new()
@@ -533,6 +534,7 @@ func make_finish() -> void:
 	sign.outline_size = 0
 	sign.modulate = Color("c8431f")
 	sign.pixel_size = 0.03
+	sign.shaded = true
 	sign.position = Vector3(0, h0 + 14.2, FINISH - 0.2)
 	sign.rotation.y = PI
 	add_child(sign)

@@ -9,6 +9,7 @@ extends Node3D
 var rider: SnowRider
 var mountain: SnowMountain
 var spray: CPUParticles3D
+var base_colors: Dictionary = {}     # emitter -> its daylight colour
 var bursts: Array[CPUParticles3D] = []
 var burst_index := 0
 var clods: CPUParticles3D
@@ -133,6 +134,8 @@ func particles(amount: int, lifetime: float, size: float, color: Color, glow := 
 	p.material_override = mat
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.color = color
+	if not glow:
+		base_colors[p] = color # unshaded snow: tinted to the time of day every frame
 	var fade := Gradient.new()
 	fade.set_color(0, Color(1, 1, 1, 1))
 	fade.set_color(1, Color(1, 1, 1, 0))
@@ -278,6 +281,11 @@ func _physics_process(delta: float) -> void:
 				rider.sound_event.emit("bough", clampf(speed / 25.0, 0.3, 1.0))
 				bough_cooldown = 0.6
 				break
+	# Unshaded particles would glow white at night: tint them to the current light.
+	var tint := SnowAtmosphere.fx_tint
+	for emitter in base_colors:
+		var base: Color = base_colors[emitter]
+		emitter.color = Color(base.r * tint.r, base.g * tint.g, base.b * tint.b, emitter.color.a)
 	update_tracks(contact)
 
 func update_tracks(contact: bool) -> void:

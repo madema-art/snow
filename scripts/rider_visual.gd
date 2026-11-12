@@ -65,6 +65,10 @@ func mat(color: Color, rough := 0.75, metal := 0.0) -> StandardMaterial3D:
 	m.albedo_color = color
 	m.roughness = rough
 	m.metallic = metal
+	# A soft rim so the rider keeps a readable outline when backlit (moonlight).
+	m.rim_enabled = true
+	m.rim = 0.45
+	m.rim_tint = 0.35
 	return m
 
 func mesh_part(key: String, mesh: Mesh, material: Material, parent: Node3D = null) -> MeshInstance3D:
@@ -258,7 +262,10 @@ func refresh_charge(charge: float) -> void:
 	if rider != null and rider.boosting:
 		flare = 1.25 + 0.2 * sin(time * 47.0)
 	board_material.emission_energy_multiplier = charge * charge * 4.5 * flare + charge * 0.8
-	lamp.light_energy = charge * 1.6 * flare
+	# At night the charged board throws its glow onto the snow around it.
+	var night := SnowAtmosphere.night_amount
+	lamp.light_energy = charge * 1.6 * flare * lerpf(1.0, 1.9, night)
+	lamp.omni_range = lerpf(3.5, 7.0, night)
 
 func reset_pose(start: Basis) -> void:
 	basis = start

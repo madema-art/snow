@@ -23,6 +23,11 @@ const SHOTS := {
 	"rider_carve": [-120.0, 900.0, 0.0, -0.9, 0.12],
 	"nitro": [-80.0, 6700.0, 0.0, -0.5, 0.05],
 	"pause": [0.0, 30.0, 0.0, 0.0, 0.0],
+	"sky_moon": [0.0, 30.0, 0.0, 0.5, -0.22],
+	"sky_aurora": [0.0, 30.0, 0.0, -0.55, -0.2],
+	"sky_up": [0.0, 30.0, 0.0, -0.2, -0.34],
+	"snow_close": [-40.0, 420.0, 0.0, 0.5, 0.42],
+	"slope_night": [-250.0, 1150.0, 0.0, 0.0, 28.0],
 	"ride_carve": [],
 	"ride_nitro": [],
 	"ride_plume": [],
@@ -31,6 +36,7 @@ const SHOTS := {
 var game: Node3D
 var rider: SnowRider
 var camera: SnowCamera
+var suffix := ""
 
 func _initialize() -> void: go.call_deferred()
 
@@ -40,7 +46,15 @@ func go() -> void:
 	rider = game.get_node("Rider")
 	camera = game.get_node("ChaseCamera")
 	DirAccess.make_dir_recursive_absolute("res://work/shots")
-	var wanted: Array = OS.get_cmdline_user_args()
+	var wanted: Array = Array(OS.get_cmdline_user_args())
+	# "--night" renders every requested shot in Night Mode (files get a _night suffix).
+	if "--night" in wanted:
+		wanted.erase("--night")
+		suffix = "_night"
+		rider.run.settings_path = "user://test_capture_settings.json"
+		rider.run.set_mode("night")
+		game.get_node("Mountain").atmosphere.set_mode("night", true)
+	game.get_node("Title").dismiss()
 	for name in SHOTS:
 		if not wanted.is_empty() and not name in wanted:
 			continue
@@ -100,7 +114,7 @@ func ride(name: String) -> void:
 		await physics_frame
 		await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://work/shots/%s.png" % name)
+	root.get_texture().get_image().save_png("res://work/shots/%s%s.png" % [name, suffix])
 	print("SHOT ", name, " speed=", rider.speed, " state=", run.state, " p=", rider.position)
 	for a in ["boost", "steer_right", "steer_left", "tuck"]:
 		Input.action_release(a)
@@ -119,6 +133,8 @@ func shot(name: String, s: Array) -> void:
 	var speed: float = s[4] if s[4] > 1.0 else 0.0
 	rider.velocity = Vector3(sin(rider.heading), 0, cos(rider.heading)) * speed
 	rider.speed = speed
+	if name == "snow_close":
+		camera.distance = 3.0
 	if name == "nitro":
 		rider.nitro = 0.95
 		rider.visual.refresh_charge(0.95)
@@ -128,22 +144,24 @@ func shot(name: String, s: Array) -> void:
 		rider.speed = 25.0
 	camera.reset()
 	camera.look_yaw = s[3]
-	if s[4] > 0.0 and s[4] < 1.0:
+	if absf(s[4]) > 0.0 and absf(s[4]) < 1.0:
 		camera.lift = s[4]
 	camera.idle = 0.0
 	if name == "rider_close":
 		camera.distance = 3.2
 	for i in 50:
-		if name in ["rider_close", "rider_carve", "nitro", "tree_close"]:
+		if name in ["rider_close", "rider_carve", "nitro", "tree_close", "snow_close"]:
 			camera.distance = 3.4
 		await physics_frame
 		await process_frame
 	if name == "pause":
 		for child in game.get_children():
-			if child is SnowPauseMenu: child.show_menu()
+			if child is SnowPauseMenu:
+				child.show_menu()
+				child.mode_button.grab_focus()
 		for i in 4: await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://work/shots/%s.png" % name)
+	root.get_texture().get_image().save_png("res://work/shots/%s%s.png" % [name, suffix])
 	print("SHOT ", name, " cam=", camera.global_position, " fps=", Engine.get_frames_per_second())
 	if name == "pause":
 		for child in game.get_children():

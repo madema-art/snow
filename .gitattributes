@@ -1,0 +1,5 @@
+# Windows scripts must have CRLF line endings on every machine (cmd.exe can
+# mis-read labels in LF-only batch files).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf

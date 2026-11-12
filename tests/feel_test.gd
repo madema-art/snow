@@ -369,6 +369,62 @@ func go() -> void:
 	controls.bindings = SnowControls.DEFAULTS.duplicate(true)
 	controls.apply_bindings()
 
+	# --- Pass 6: Day / Night ----------------------------------------------------
+	var atmosphere: SnowAtmosphere = game.get_node("Mountain").atmosphere
+	var soundtrack: SnowMusic = game.get_node("Music")
+	run.settings_path = "user://test_feel_settings.json"
+	menu.restart()
+	check(run.mode == "day" and atmosphere.mode == "day" and SnowAtmosphere.night_amount == 0.0, "a fresh install starts in Day")
+	var day_exposure := atmosphere.environment.tonemap_exposure
+	menu.show_menu()
+	check(not menu.mode_button.disabled and "Day" in menu.mode_button.text and "DAY" in menu.records_title.text, "at the summit the pause menu offers the time of day")
+	var song_before := soundtrack.current
+	var songs_before := soundtrack.history.size()
+	menu.mode_button.pressed.emit() # A on the selector
+	check(run.mode == "night" and atmosphere.mode == "night" and "Night" in menu.mode_button.text and "NIGHT" in menu.records_title.text, "choosing Night applies at once and switches to the Night leaderboard")
+	for i in 130:
+		await process_frame
+	check(paused and is_equal_approx(SnowAtmosphere.night_amount, 1.0) and atmosphere.environment.tonemap_exposure > day_exposure and (atmosphere.sun.basis.z).dot(SnowAtmosphere.MOON_DIRECTION.normalized()) > 0.99, "the world cross-fades to moonlight behind the paused menu")
+	check(soundtrack.current == song_before and soundtrack.history.size() == songs_before, "changing the time of day never restarts or skips the music")
+	var saved_mode = JSON.parse_string(FileAccess.get_file_as_string("user://test_feel_settings.json"))
+	var fresh := SnowRun.new()
+	fresh.settings_path = run.settings_path
+	fresh.load_settings()
+	check(saved_mode is Dictionary and saved_mode.get("mode") == "night" and fresh.mode == "night", "the chosen time of day is remembered for the next launch")
+	fresh.free()
+	menu.hide_menu()
+	await press_and_run(30)
+	check(not run.set_mode("day") and run.mode == "night", "the time of day cannot be changed during a timed descent")
+	menu.show_menu()
+	menu.mode_button.pressed.emit()
+	check(menu.mode_button.disabled and "locked" in menu.mode_button.text and run.mode == "night" and atmosphere.mode == "night", "the selector is locked while the clock is running")
+	menu.hide_menu()
+	check(not game.get_node("Title").visible, "the launch title is gone once the rider has pushed off")
+	var drawn := false
+	for layer in game.get_children():
+		if layer is CanvasLayer:
+			for item in layer.get_children():
+				if item is CanvasItem and item.is_visible_in_tree(): drawn = true
+	check(not drawn, "no HUD: nothing at all is drawn over the game during a descent, day or night")
+	var day_times: Array = run.by_mode["day"].duplicate()
+	run.records.clear()
+	run.elapsed = 222.0
+	run.finish()
+	check(run.by_mode["night"] == [222.0] and run.by_mode["day"] == day_times and FileAccess.file_exists("user://test_feel_records_night.json"), "a night finish is recorded on the Night leaderboard only")
+	check(run.set_mode("day") and run.mode == "day" and not 222.0 in run.records, "after the run the time of day can be changed again")
+	menu.refresh()
+	check("DAY" in menu.records_title.text and not "03:42.00" in menu.records_label.text, "the menu shows the leaderboard of the selected time of day")
+	run.set_mode("night")
+	menu.refresh()
+	check("NIGHT" in menu.records_title.text and "03:42.00" in menu.records_label.text, "switching back shows the Night times again")
+	run.load_records()
+	check(run.by_mode["night"] == [222.0] and not 222.0 in run.by_mode["day"], "Day and Night top tens persist in separate files")
+	menu.restart()
+	run.set_mode("day")
+	atmosphere.set_mode("day", true)
+	check(SnowAtmosphere.night_amount == 0.0 and is_equal_approx(atmosphere.environment.tonemap_exposure, day_exposure) and (atmosphere.sun.basis.z).dot(SnowAtmosphere.SUN_DIRECTION.normalized()) > 0.99, "Day returns exactly to its own lighting")
+	check(ProjectSettings.get_setting("application/boot_splash/image") == "res://branding/splash.png" and FileAccess.file_exists("res://branding/snow.ico") and FileAccess.file_exists("res://branding/icon_256.png"), "branded boot splash and icon are in place")
+
 	# --- Soundtrack manager (real files in res://assets/music/) ------------
 	var music: SnowMusic = game.get_node("Music")
 	var opener := music.music_dir.path_join(SnowMusic.OPENING_TRACK)
@@ -455,7 +511,7 @@ func go() -> void:
 	game.queue_free()
 	await process_frame
 	OS.delay_msec(100)
-	for path in ["user://test_feel_controls.json", "user://test_feel_records.json"]:
+	for path in ["user://test_feel_controls.json", "user://test_feel_records.json", "user://test_feel_records_night.json", "user://test_feel_settings.json"]:
 		DirAccess.remove_absolute(path)
 	print("FEEL TESTS failures=", failures)
 	quit(0 if failures == 0 else 1)
