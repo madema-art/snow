@@ -5,7 +5,7 @@ Pass 8 rebuilds the world as a true 360-degree mountain at the owner's request: 
 ## Pass 8 changes
 
 **The world** (`tools/build_massif.py` → `world/massif_v4.bin`, `scripts/mountain.gd`; details in MOUNTAIN.md)
-- One alpine massif ~20 km across: summit ~3,740 m at the world origin, a summit ridge with two subsidiary peaks, ten meandering aretes with spurs, bowls, eroded gullies, cliff bands broken by couloirs, cornices, rollers, forests below each face's treeline, valley floors (300–1,050 m) around the whole base, surrounding ranges and a horizon ring to 48 km. Faces have their own characters (north steep and cliffy, east forested, south open snowfields, west ravines). No main course, no preferred axis, no finish gate.
+- One alpine massif ~20 km across: summit ~3,730 m at the world origin, a summit ridge with two subsidiary peaks, ten meandering aretes with spurs, bowls, eroded gullies, cliff bands broken by couloirs, cornices, rollers, forests below each face's treeline, valley floors (300–1,050 m) around the whole base, surrounding ranges and a horizon ring to 48 km. Faces have their own characters (north steep and cliffy, east forested, south open snowfields, west ravines). No main course, no preferred axis, no finish gate.
 - Baked offline (deterministic numpy tool, ~40 s): ridge skeleton, aspect-dependent flanks, erosion, pit filling (no closed hollows), masks. Runtime adds cliff bands, cornice lips, rollers and relief.
 - Streaming: 640 m tiles; 8 m render+collision tiles with trees and rocks on the 3×3 around the rider (in whatever direction it travels), 32 m / 128 m merged blocks beyond, far trees to ~1.9 km, painted forest stands and a horizon ring further out. Generation on worker threads; scenery planted a frame later; collision built immediately if ever needed.
 
@@ -23,7 +23,21 @@ Pass 8 rebuilds the world as a true 360-degree mountain at the owner's request: 
 
 ## Pass 8 validation
 
-VALIDATION_TABLE
+| Suite | Result |
+|---|---|
+| Import / parse | no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` (+ summit start and left-stick aiming, push-off follows the board, gravity alike in all eight directions (0.61–0.82 of g·sin slope on comparable slopes), clockwise steering in every direction, valley floors on all eight sides, a ravine halfway down never counts, no finish in the air, the finishing face is recorded, older record files still read) | **104/104** |
+| `terrain_test.gd` (render == collision, no seam loss at 40 m/s, streaming in every direction, bounded memory, streamer stays ahead at 42 m/s, rollers launch a rider) | **6/6** |
+| `mountain_test.gd` — summit camera, four straight no-input lines (none gets down cleanly: falls, stalls or a fatal fall), and a descent in **every** sector with ordinary inputs | **all 8 sectors reach the bottom**, failures=0 |
+| — N / NE / E / SE / S / SW / W / NW | 6:01 N · 5:41 NE (north valley) · 6:42 E · 6:36 SE (south) · 6:29 S (south-west) · 6:26 SW · 6:45 W · 6:11 NW (north); 8.8–10.2 km, 2.6–3.3 km down; median **6:29** |
+| `--cautious` (N, E, S, W) | all 4 finish, median **7:21** |
+| `--tricks` (S, SW, E, SE) | 3 of 4 finish (6:20–6:34); on SW a trick landing about 1 km down was fatal. 91 rewarded landings, 10.9 boards of nitro earned, 38 s of boost |
+| Render-cost probe, 3840×2160, software GL (counts only) | 157–304 draw calls, 0.42–1.21 M primitives (east forest heaviest); startup ~3.5 s on the 4-core cloud box |
+
+Bot notes, honestly: the bots plan a route over a 50 m grid of the real terrain and follow it with ordinary inputs; they are careful (brake for bends, slow in trees, steer away from drops) and land about a minute slower than the five-minute target a skilled human should hit with tucks, lines and nitro. Each sector finishes on its own side or the neighbouring one (the bots happen to use the north valley from NE and NW). Renders (software GL) inspected: the summit in four directions and from above, the north face and its cliff bands, the east forest, the south snowfields, the west ravine, a valley floor and the view back up, close trees, and at night the summit, the moon in the east-south-east, the aurora over the northern sky, the Milky Way, a moonlit slope and the nitro glow.
+
+**Known issues:** in dense forest the chase camera can sit inside a tree's canopy (canopies are not solid to the camera, as before); bot times are above five minutes; streaming work on the main thread peaked at ~16 ms in one frame in the cloud.
 
 ## Not tested — needs the owner's PC
 

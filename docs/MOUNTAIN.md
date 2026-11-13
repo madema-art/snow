@@ -15,7 +15,7 @@ Compass: **north = -Z, east = +X, south = +Z, west = -X**. Azimuths are measured
 | Baked world | ±16 km square (1280 × 1280 height samples, 25 m apart) |
 | Horizon ring | distant ranges out to ±48 km (render only) |
 
-A skilled descent takes about five minutes on most faces (the bots' times are in BUILD_STATUS.md); different faces and lines take different times, and that is part of the game.
+A skilled descent should take about five minutes; the test bots, riding carefully with no nitro, take 5:41–6:45 depending on the side (BUILD_STATUS.md). Different faces and lines take different times, and that is part of the game.
 
 ## How the mountain is made
 
