@@ -2,11 +2,14 @@ class_name SnowAtmosphere
 extends Node3D
 ## Sky, light, haze and exposure for the two presentations of the same mountain.
 ##
-## DAY: a low sun rakes ACROSS the fall line so every roll, gully bank and wind
-## ripple is modelled by light and long shadows; cool sky ambient keeps shadowed
-## snow blue-white; depth fog sells kilometres of scale.
-## NIGHT: the moon is the one real light (ahead and to the left of the fall line,
-## visible from the summit), under stars, the Milky Way and aurora. Exposure is
+## The world is one 360-degree mountain, so the sky is composed for every view:
+## DAY: the sun stands in the south-south-west at ~32 degrees; each face of the
+## mountain is lit by its real orientation to it (north faces stay in cold
+## shadow, south faces glow); cool sky ambient keeps shadowed snow blue-white and
+## depth fog sells kilometres of scale.
+## NIGHT: the moon in the east-south-east is the one real light (the same
+## direction as its disc), the aurora owns the northern sky, the Milky Way arches
+## from the south-west to the north-east, and stars fill everything. Exposure is
 ## raised so moonlit snow reads silver-blue and hazards stay readable at speed:
 ## visibility comes from moonlight, sky light and the snow's own response, never
 ## from a spotlight on the rider.
@@ -18,8 +21,8 @@ extends Node3D
 ## TWEAKABLE: every look parameter for both modes is in MODES below; sky features
 ## (moon size, star/Milky Way brightness, aurora strength and speed) are in
 ## SKY_NIGHT. Gameplay never reads any of it.
-const SUN_DIRECTION := Vector3(-0.904, 0.425, 0.053)   # toward the sun
-const MOON_DIRECTION := Vector3(0.524, 0.454, 0.721)   # toward the moon
+const SUN_DIRECTION := Vector3(-0.318, 0.530, 0.786)   # toward the sun (SSW, 32 deg up)
+const MOON_DIRECTION := Vector3(0.826, 0.454, 0.334)   # toward the moon (ESE, 27 deg up)
 const TRANSITION := 1.4                                # seconds to cross-fade
 
 const MODES := {

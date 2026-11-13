@@ -57,9 +57,9 @@ func go() -> void:
 	cam.fov = 40.0
 	game.add_child(cam)
 	cam.make_current()
-	var z := 30.0 * SnowMountain.DISTANCE_SCALE
-	rider.position = Vector3(0.0, SnowMountain.height_at(0.0, z) + 0.7, z)
-	var up := SnowMountain.normal_at(0.0, z)
+	var spot := SnowMountain.spawn_point() + Vector3(0, 0, 36)
+	rider.position = Vector3(spot.x, SnowMountain.height_at(spot.x, spot.z) + 0.7, spot.z)
+	var up := SnowMountain.normal_at(spot.x, spot.z)
 	for name in POSES:
 		if not wanted.is_empty() and not name in wanted:
 			continue

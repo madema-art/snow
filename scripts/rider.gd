@@ -14,6 +14,7 @@ const T = preload("res://scripts/snow_tuning.gd")
 @export var nitro_burn := T.NITRO_BURN
 @export var drag := T.DRAG
 var run: SnowRun
+var mountain: SnowMountain       # streams collision around the rider (may be null in tools)
 var visual: SnowRiderVisual
 var heading := 0.0
 var nitro := 0.0
@@ -79,6 +80,7 @@ var tumble_resting := false
 var tumble_airborne := true
 var tumble_hop := 0.0
 var leaning_normal := Vector3.ZERO
+var summit_turn := 0.0            # smoothed LS aim while choosing a direction at the summit
 var leaning_time := 10.0
 var _rng := RandomNumberGenerator.new()
 var _ray := PhysicsRayQueryParameters3D.new()
@@ -102,7 +104,13 @@ func _ready() -> void:
 	reset()
 
 func reset() -> void:
-	position = Vector3(0, SnowMountain.height_at(0, 8) + 0.7, 8)
+	# Every run starts stationary on the summit, the highest point of the world,
+	# with the board facing south; the left stick aims it anywhere before push-off.
+	var top := SnowMountain.spawn_point()
+	position = top + Vector3(0, 0.7, 0)
+	if mountain != null and mountain.is_inside_tree():
+		mountain.ensure_ready(position, 1)
+		position.y = ground_y(top.x, top.z) + 0.7
 	velocity = Vector3.ZERO
 	heading = 0.0
 	nitro = 0.0
@@ -149,14 +157,26 @@ func reset() -> void:
 	lean_side = 0.0
 	_rng.seed = 5521
 	safe_position = position
-	grounded_normal = SnowMountain.normal_at(0, 8)
-	surface = SnowMountain.surface_at(0, 8)
+	grounded_normal = SnowMountain.normal_at(top.x, top.z)
+	surface = SnowMountain.surface_at(top.x, top.z)
 	if is_instance_valid(visual):
 		visual.reset_pose(basis_for(grounded_normal, 0.0))
 	reset_performed.emit()
 
 func forward() -> Vector3:
 	return Vector3(sin(heading), 0, cos(heading))
+
+## Heading that points straight down the local fall line (any compass direction).
+static func fall_heading(p: Vector3, fallback: float) -> float:
+	var n := SnowMountain.normal_at(p.x, p.z)
+	var flat := Vector2(n.x, n.z)
+	return atan2(flat.x, flat.y) if flat.length() > 0.03 else fallback
+
+## Downhill direction on the ground at `p` (unit, horizontal).
+static func fall_dir(p: Vector3) -> Vector3:
+	var n := SnowMountain.normal_at(p.x, p.z)
+	var flat := Vector3(n.x, 0, n.z)
+	return flat.normalized() if flat.length() > 0.03 else Vector3(0, 0, 1)
 
 func basis_for(up: Vector3, yaw: float) -> Basis:
 	var z := Vector3(sin(yaw), 0, cos(yaw)).slide(up).normalized()
@@ -284,7 +304,15 @@ func update_tumble(delta: float) -> void:
 			else:
 				tumble_vel = tangent
 		tumble_airborne = false
-		tumble_apex = next.y
+		# Sliding down a rock face counts like falling: the height lost since the
+		# body last touched gentle ground decides whether the fall is fatal.
+		if n.y > 0.6:
+			if not fatal_crash and tumble_apex - next.y >= T.TUMBLE_FATAL_DROP:
+				fatal_crash = true
+				last_crash_reason = "tumbled off a drop"
+				sound_event.emit("fatal", 1.0)
+				run.fatal()
+			tumble_apex = next.y
 		# Rolling, ploughing slide: gravity along the slope is already in tumble_vel.
 		var slide_speed := tumble_vel.length()
 		var friction := T.TUMBLE_FRICTION + T.TUMBLE_PLOW * slide_speed
@@ -401,16 +429,29 @@ func recovery_point(at: Vector3, normal: Vector3) -> Vector3:
 	var side := normal.cross(Vector3.UP).normalized()
 	if side.length_squared() < 0.5:
 		side = Vector3.RIGHT
-	var base := at + normal * 3.0 - Vector3(0, 0, 3)
+	# A little uphill of the impact (whatever way the slope falls) and off to the side.
+	var uphill := -fall_dir(at)
+	var base := at + normal * 3.0 + uphill * 3.0
 	for back in [0.0, 5.0]:
 		for offset in [3.0, -3.0, 6.0, -6.0, 9.0, -9.0, 13.0, -13.0]:
-			var candidate: Vector3 = base + side * offset - Vector3(0, 0, back)
-			candidate.y = SnowMountain.height_at(candidate.x, candidate.z) + 0.72
+			var candidate: Vector3 = base + side * offset + uphill * back
+			candidate.y = ground_y(candidate.x, candidate.z) + 0.72
 			if absf(candidate.y - at.y) > 6:
 				continue
 			if standable(candidate):
 				return candidate
 	return safe_position
+
+## Height of the actual collision surface (the 8 m mesh the board rides on),
+## falling back to the analytic terrain where no collision is loaded. Standing
+## the rider up by this, never by the analytic value, keeps it above the mesh.
+func ground_y(x: float, z: float) -> float:
+	var analytic := SnowMountain.height_at(x, z)
+	if not is_inside_tree():
+		return analytic
+	var ray := PhysicsRayQueryParameters3D.create(Vector3(x, analytic + 40.0, z), Vector3(x, analytic - 40.0, z), 1)
+	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	return hit["position"].y if not hit.is_empty() else analytic
 
 func standable(candidate: Vector3) -> bool:
 	if SnowMountain.normal_at(candidate.x, candidate.z).y < 0.75:
@@ -428,15 +469,23 @@ func standable(candidate: Vector3) -> bool:
 	var fall := Vector3(n.x, 0, n.z)
 	fall = fall.normalized() if fall.length() > 0.05 else Vector3(0, 0, 1)
 	var to := candidate + fall * 7.0
-	to.y = SnowMountain.height_at(to.x, to.z) + 0.72
+	to.y = ground_y(to.x, to.z) + 0.72
 	probe.motion = to - candidate
-	return space.cast_motion(probe)[0] >= 0.99
+	if space.cast_motion(probe)[0] < 0.99:
+		return false
+	# ...and no cliff edge just below: nobody stands up facing a drop.
+	var here := SnowMountain.height_at(candidate.x, candidate.z)
+	for d: float in [10.0, 20.0, 30.0]:
+		var q := candidate + fall * d
+		if here - SnowMountain.height_at(q.x, q.z) > d * 1.0 + 6.0:
+			return false
+	return true
 
 ## Where the rider stands up: where the tumble actually came to rest. If that
 ## exact spot is not safe to stand on (steep, boxed in, inside scenery) the nearest
 ## clear spot around it; only as a last resort the place the fall began.
 func getup_point() -> Vector3:
-	var candidate := Vector3(tumble_pos.x, SnowMountain.height_at(tumble_pos.x, tumble_pos.z) + 0.72, tumble_pos.z)
+	var candidate := Vector3(tumble_pos.x, ground_y(tumble_pos.x, tumble_pos.z) + 0.72, tumble_pos.z)
 	if standable(candidate):
 		return candidate
 	var around := recovery_point(candidate, SnowMountain.normal_at(candidate.x, candidate.z))
@@ -463,10 +512,17 @@ func _physics_process(delta: float) -> void:
 		update_visual(delta)
 		return
 	if run.state == "ready":
+		# On the summit the left stick turns the board on the spot: choose any face
+		# of the mountain. The clock does not run until the push-off.
+		var aim := Input.get_axis("steer_left", "steer_right")
+		aim = signf(aim) * smoothstep(0.15, 1.0, absf(aim))
+		summit_turn = lerpf(summit_turn, aim, 1.0 - exp(-10.0 * delta))
+		heading = wrapf(heading - summit_turn * T.SUMMIT_TURN_RATE * delta, -PI, PI)
 		if Input.is_action_just_pressed("jump"):
 			just_pushed_off = true
 			run.push_off()
-			velocity = Vector3(0, -1, 3.0)
+			velocity = forward().slide(grounded_normal).normalized() * T.PUSH_SPEED + Vector3.DOWN
+			summit_turn = 0.0
 			pop_time = 0.0
 			sound_event.emit("push", 0.6)
 		else:
@@ -490,16 +546,16 @@ func _physics_process(delta: float) -> void:
 			safe_position = getup_point()
 			position = safe_position
 			tumble_pos = safe_position
-			heading = 0.0
+			heading = fall_heading(safe_position, heading)
 			switch_stance = false
 			grounded_normal = SnowMountain.normal_at(position.x, position.z)
 			sound_event.emit("getup", 0.5)
 		if recovery == 0.0:
 			position = safe_position
 			launch_height = position.y
-			heading = 0.0
+			heading = fall_heading(safe_position, heading)
 			switch_stance = false
-			velocity = Vector3(0, -1, 1.0)
+			velocity = forward() * 1.0 + Vector3.DOWN
 			previous_ground = false
 			tumble_active = false
 		update_visual(delta)
@@ -561,7 +617,8 @@ func _physics_process(delta: float) -> void:
 			crash(maxf(6.0, speed * 0.45), false, Vector3.ZERO, velocity + grounded_normal.cross(forward()) * signf(steer) * 3.0)
 			update_visual(delta)
 			return
-		# Looking downhill along +Z, screen-right is world -X.
+		# Screen-right (positive steer) turns the board clockwise seen from above,
+		# in every direction of travel.
 		heading += yaw_rate * delta
 		var fwd := forward().slide(grounded_normal).normalized()
 		var side := grounded_normal.cross(fwd).normalized()
@@ -714,8 +771,10 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor() and air_time > 1 and launch_height - position.y > T.FATAL_FALL_DROP and velocity.y < -20 and recovery <= 0.0:
 		last_crash_reason = "cliff fall"
 		crash(50.0, true, Vector3.ZERO, velocity)
-	if position.z >= SnowMountain.FINISH and absf(position.x) < 50.0 and is_on_floor() and recovery <= 0 and run.state == "running":
-		run.finish()
+	# The finish is the bottom of the mountain, on any side: riding (grounded, not
+	# recovering, not in the air) on a real valley floor far below the summit.
+	if run.state == "running" and is_on_floor() and recovery <= 0 and not airborne and SnowMountain.at_bottom(position):
+		run.finish(SnowMountain.face_name(position.x, position.z))
 		sound_event.emit("finish", 1.0)
 	update_visual(delta)
 

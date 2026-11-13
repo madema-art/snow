@@ -18,10 +18,12 @@ uniform vec3 aurora_tint = vec3(0.10, 0.55, 0.36);
 
 varying vec3 wpos;
 varying vec4 surf;
+varying vec2 lod_data;   // UV: x = forest stand density, y = cliff mask
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	surf = COLOR;
+	lod_data = UV;
 }
 
 float ripple(vec2 p) {
@@ -70,7 +72,7 @@ void fragment() {
 	// Subtle blue in ripple troughs reads as fine relief at riding distance.
 	snow = mix(snow, snow * vec3(0.86, 0.91, 1.0), clamp((sas_amp > 0.0 ? ripple(p) : 0.0) * 0.35 * near_fade, 0.0, 0.3));
 	float ao = surf.a;
-	ALBEDO = mix(snow, rock_col, rock) * mix(0.55, 1.0, ao);
+	vec3 albedo = mix(snow, rock_col, rock) * mix(0.55, 1.0, ao);
 	// Moonlit snow is glossier: a soft silver sheen and a glitter path toward the moon.
 	ROUGHNESS = mix(mix(0.72, 0.88, powder) * (1.0 - ice * 0.55) * mix(1.0, 0.72, night), 0.92, rock);
 	SPECULAR = mix(mix(0.42, 0.62, night), 0.25, rock);
@@ -102,5 +104,9 @@ void fragment() {
 	float grazing = pow(1.0 - max(dot(detail_n, view_w), 0.0), 4.0);
 	float aurora_wash = 0.6 + 0.4 * vnoise(p * 0.004 + vec2(TIME * 0.01, 0.0));
 	EMISSION += night * (1.0 - rock) * (vec3(0.20, 0.32, 0.60) * grazing * 0.035 + aurora_tint * aurora_wash * smoothstep(0.6, 0.95, nw.y) * 0.02);
+	// Beyond the range where real trees are drawn, forests are painted as dark,
+	// snow-dusted stands so the timbered flanks still read from the summit.
+	float far_forest = smoothstep(0.3, 0.7, lod_data.x) * smoothstep(1500.0, 2300.0, dist) * (1.0 - rock);
+	ALBEDO = mix(albedo, mix(vec3(0.05, 0.09, 0.07), snow * 0.8, 0.3), far_forest * 0.8);
 	NORMAL = normalize((VIEW_MATRIX * vec4(detail_n, 0.0)).xyz);
 }

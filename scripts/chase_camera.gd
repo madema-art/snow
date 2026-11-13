@@ -41,7 +41,7 @@ var query := PhysicsShapeQueryParameters3D.new()
 func _ready() -> void:
 	current = true
 	near = 0.15
-	far = 30000
+	far = 70000            # the horizon ring reaches ~48 km
 	sphere.radius = T.CAM_COLLISION_RADIUS
 	query.shape = sphere
 	query.collision_mask = 3

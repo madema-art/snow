@@ -1,37 +1,71 @@
 class_name SnowMountain
 extends Node3D
-## All units metres. Real topography, no checkpoint or coordinate death barriers.
-const LENGTH := 9360.0
-const DISTANCE_SCALE := 1.2
-const WIDTH := 1200.0
+## The world of SNOW: one 360-degree alpine massif (course massif_v4).
+##
+## The summit is the highest point of the world and the mountain falls away from
+## it in every direction: eight aretes with side spurs, bowls between them, cliff
+## bands, couloirs, cornices, ravines and forests, ending on valley floors that
+## surround the whole massif. There is no main course and no preferred axis.
+##
+## GEOGRAPHY: `world/massif_v4.bin` (baked by tools/build_massif.py) holds the
+## large-scale height field over +-16 km and four masks (valley floor, cliffs,
+## forest, cornices). `height_at()` samples it (bicubic) and adds what is too fine
+## to bake: cliff bands (terracing where the cliff mask says so), cornice lips,
+## wind-drift kickers and small relief. It is the single source of truth for
+## rendering, collision, physics, camera, audio, tumbles and tests.
+##
+## STREAMING: the world is cut into 640 m tiles grouped in 3.2 km blocks.
+##   L0  8 m grid, render triangles == collision triangles, trees and rocks with
+##       colliders: the 3x3 tiles around the rider (whatever way it travels).
+##   L1  32 m grid within 3.6 km; L2 128 m grid elsewhere. Each block is ONE mesh
+##       merged from its tiles' L1/L2 pieces with holes where L0 tiles are shown.
+##   Far trees (no colliders) on L1 tiles within ~1.9 km; beyond that the terrain
+##       shader paints forest stands. A coarse horizon ring closes the world.
+## Tiles and blocks are generated on WorkerThreadPool threads and swapped in on
+## the main thread; skirts hide cracks between resolutions. `ensure_ready()`
+## builds collision synchronously if the rider ever outruns the streamer.
+## Mountain map: north = -Z, east = +X, south = +Z, west = -X.
+const COURSE_ID := "massif_v4"
+const WORLD_FILE := "res://world/massif_v4.bin"
 const STEP := 8.0
-const FINISH := 9180.0
-const COURSE_ID := "massif_v3"
-const CHUNK := 200.0
+const TILE := 640.0
+const L0_CELLS := 80
+const L1_CELLS := 20
+const L2_CELLS := 5
+const BLOCK := 5                       # tiles per block side
+const L1_RADIUS := 3600.0
+const SCENERY_RADIUS := 1900.0
 const TREE_NEAR_RANGE := 320.0
-const TREE_FAR_RANGE := 2600.0
-const ROCK_RANGE := 1600.0
-var terrain_material: ShaderMaterial
-var tree_material: ShaderMaterial
-var rock_material: ShaderMaterial
-var tree_variants: Array = []      # [near mesh, far mesh, scale-free height]
-var rock_variants: Array = []      # [mesh, unit points]
-var tree_count := 0
-var rock_count := 0
-var outcrop_count := 0
-## Every solid hazard as Vector4(x, y, z, radius), bucketed per 200 m chunk for
-## cheap neighbourhood queries (audio whooshes, tests, AO baking).
-var hazard_buckets: Dictionary = {}
-var tree_buckets: Dictionary = {}
-var pending_rocks: Dictionary = {}   # chunk start -> [transforms per variant, custom per variant]
-var atmosphere: SnowAtmosphere
-var clump_noise := _make_noise(907, 1.0 / 150.0, 2)
-var rock_noise := _make_noise(311, 1.0 / 85.0, 1)
+const TREE_FAR_RANGE := 2100.0
+const ROCK_RANGE := 1400.0
+const MAX_TASKS := 6
+## A descent is complete on a valley floor at least this far below the summit.
+const FINISH_DROP := 1500.0
+## Vertical spacing of cliff bands (m); risers are ~80% of it, benches between.
+const CLIFF_SPACING := 140.0
+const FACES := ["North", "North-east", "East", "South-east", "South", "South-west", "West", "North-west"]
+enum { MASK_FINISH, MASK_CLIFF, MASK_FOREST, MASK_CORNICE }
 
-static func band(v: float, lo: float, hi: float, feather: float) -> float:
-	return smoothstep(lo - feather, lo, v) * (1.0 - smoothstep(hi, hi + feather, v))
-
+# ------------------------------------------------------------------ world data
+static var world_ready := false
+static var map_n := 0
+static var mask_n := 0
+static var extent := 0.0
+static var h_lo := 0.0
+static var h_scale := 1.0
+static var map_step := 1.0
+static var mask_ratio := 2.0
+static var heights := PackedByteArray()
+static var masks := PackedByteArray()
+static var summit := Vector3.ZERO
+static var _spawn := Vector3.INF
 static var _relief: FastNoiseLite = _make_noise(4117, 1.0 / 115.0, 2)
+static var _cliff_noise: FastNoiseLite = _make_noise(733, 1.0 / 420.0, 2)
+static var _cliff_gaps: FastNoiseLite = _make_noise(2291, 1.0 / 700.0, 1)
+static var _drift: FastNoiseLite = _make_noise(5521, 1.0 / 95.0, 1)
+static var _clump: FastNoiseLite = _make_noise(907, 1.0 / 150.0, 2)
+static var _rock_noise: FastNoiseLite = _make_noise(311, 1.0 / 85.0, 1)
+static var _far_noise: FastNoiseLite = _make_ridged(8402, 1.0 / 5200.0)
 
 static func _make_noise(noise_seed: int, frequency: float, octaves: int) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
@@ -42,115 +76,229 @@ static func _make_noise(noise_seed: int, frequency: float, octaves: int) -> Fast
 	n.frequency = frequency
 	return n
 
-## Centre lines (world X for a logical distance) of the two natural drainages that
-## wind down the whole mountain: banked snow gullies on the open faces, creek beds
-## that ARE the forest corridors, and the valley floor at the finish. The west
-## drainage pours over the forest escarpment as an icefall; the east one ends in
-## the broken mountain. They suggest lines; they never wall the rider in.
-static func west_line(z: float) -> float:
-	var x := lerpf(-300.0 + 70.0 * sin(z / 330.0 + 0.4), -180.0 + 95.0 * sin((z - 2800.0) / 300.0), smoothstep(2450.0, 2950.0, z))
-	x = lerpf(x, -300.0 + 40.0 * sin(z / 210.0), smoothstep(4600.0, 5000.0, z))
-	return lerpf(x, -70.0, smoothstep(6400.0, 7300.0, z))
+static func _make_ridged(noise_seed: int, frequency: float) -> FastNoiseLite:
+	var n := _make_noise(noise_seed, frequency, 3)
+	n.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	return n
 
-static func east_line(z: float) -> float:
-	var upper := 320.0 + 60.0 * sin(z / 290.0 + 2.0) + 110.0 * exp(-pow((z - 2310.0) / 260.0, 2.0))
-	var x := lerpf(upper, 260.0 + 65.0 * sin(z / 180.0), smoothstep(2550.0, 2950.0, z))
-	x = lerpf(x, 330.0 + 45.0 * sin(z / 240.0 + 1.0), smoothstep(4600.0, 5000.0, z))
-	return lerpf(x, 70.0, smoothstep(6400.0, 7300.0, z))
+static func load_world() -> void:
+	if world_ready:
+		return
+	var f := FileAccess.open(WORLD_FILE, FileAccess.READ)
+	if f == null:
+		push_error("SNOW world file missing: " + WORLD_FILE)
+		return
+	var raw_size := f.get_32()
+	var raw := f.get_buffer(f.get_length() - 4).decompress(raw_size, FileAccess.COMPRESSION_DEFLATE)
+	map_n = raw.decode_u32(8)
+	mask_n = raw.decode_u32(12)
+	extent = raw.decode_float(16)
+	h_lo = raw.decode_float(20)
+	h_scale = raw.decode_float(24)
+	summit = Vector3(raw.decode_float(28), raw.decode_float(36), raw.decode_float(32))
+	map_step = 2.0 * extent / (map_n - 1)
+	mask_ratio = float(map_n) / mask_n
+	heights = raw.slice(40, 40 + map_n * map_n * 2)
+	masks = raw.slice(40 + map_n * map_n * 2)
+	world_ready = true
 
-static func height_at(x: float, distance: float) -> float:
-	var z := distance / DISTANCE_SCALE
-	# No speed cap or time padding: over 3.1 km of vertical descent to the finish.
-	var h := 3300.0 - 0.34 * distance
-	# The start is a true summit: the ground falls away behind the rider and off
-	# both shoulders of the summit ridge before the face opens into its bowl.
-	h -= maxf(0.0, -distance - 4.0) * 0.95
-	var summit := 1.0 - smoothstep(0.0, 1000.0, z)
-	h += (0.00019 - 0.00075 * summit) * x * x
-	# Pitches and benches: the grade swings between about 0.24 and 0.44 instead of
-	# one constant ramp (steep off the top), and the benches curve across the face.
-	h -= 26.0 * sin(z / 400.0 + 0.5 * sin(x / 360.0)) + 10.0 * sin(z / 170.0 + x / 300.0 + 1.3)
-	h += 4.0 * sin(x / 110.0) * sin(z / 180.0)
-	# Rolling wind-drift and moraine relief, strongest in the broken mountain.
-	var broken_zone := band(z, 4750, 6370, 200)
-	h += _relief.get_noise_2d(x, distance) * (3.2 + 2.0 * broken_zone - 1.2 * summit)
-	# Natural drainages (see west_line/east_line): banked gullies to carve.
-	var forest_zone := band(z, 2800, 4700, 150)
-	var gully_depth := lerpf(7.0 + 3.0 * sin(z / 190.0), 4.5, forest_zone) * smoothstep(120.0, 420.0, z)
-	var gully_width := lerpf(38.0, 22.0, forest_zone) + 45.0 * smoothstep(6600.0, 7400.0, z)
-	h -= gully_depth * exp(-pow((x - west_line(z)) / gully_width, 2.0))
-	h -= gully_depth * (1.0 - band(z, 4900, 6450, 250)) * exp(-pow((x - east_line(z)) / gully_width, 2.0))
-	# Broad summit, then a transverse gorge with BOTH west/east snow shoulders.
-	var spur := exp(-pow((x - 120.0) / 22.0, 4.0))
-	var gorge_z := z - 24.0 * sin(x / 85.0)
-	var gorge := lerpf(band(gorge_z, 1480, 1570, 18), band(gorge_z, 1494, 1514, 8), spur)
-	h -= 100.0 * band(x, -215, 215, 35) * gorge
-	# A real snow lip on the narrow rock spur supports a difficult ollie shortcut.
-	h += 4.5 * exp(-pow((gorge_z - 1486.0) / 13.0, 2.0)) * exp(-pow((x - 120.0) / 25.0, 4.0))
-	# The far rim sits a little lower than the take-off and the snow beyond it falls
-	# away steeply, so a committed jump lands with the slope instead of onto a shelf.
-	h -= (4.0 * smoothstep(1508.0, 1524.0, gorge_z) + 8.0 * smoothstep(1524.0, 1580.0, gorge_z)) * (1.0 - smoothstep(1600.0, 1720.0, gorge_z)) * exp(-pow((x - 120.0) / 34.0, 4.0))
-	# Cliff region's tilted rock buttress. Routes around both ends and a narrow chute.
-	var buttress := band(x, -70, 330, 55) * (1.0 - exp(-pow((x - 120.0) / 19.0, 4.0)))
-	h += 58.0 * buttress * exp(-pow((z - 2310.0) / 72.0, 4.0))
-	# Forest rolls, allowing broad corridors rather than a marked single track.
-	h += 5.0 * sin(x / 65.0 + z / 145.0) * band(z, 2900, 4600, 240)
-	# A broken left-side escarpment demands a traverse before dropping to lower forest.
-	h -= 85.0 * band(x, -470, 85, 30) * band(z - 18.0*sin(x/95.0), 4220, 4310, 16)
-	# Broken mountain: large gullies, spines and natural launches, blending into final bowl.
-	h += broken_zone * (12.0 * sin(x / 72.0 + z / 125.0) + 4.0 * sin(z / 43.0))
-	# The first broken cut pinches to a narrow gap near x=170 with a kicker on its
-	# uphill lip: a visible, committing gap-jump shortcut versus the long west detour.
-	var pinch := exp(-pow((x - 170.0) / 26.0, 4.0))
-	var cut_z := z - 22.0*sin(x/75.0)
-	h -= 92.0 * band(x, -120, 235, 24) * lerpf(band(cut_z, 5440, 5520, 16), band(cut_z, 5472, 5490, 6), pinch)
-	h += 10.0 * smoothstep(5442.0, 5468.0, cut_z) * (1.0 - smoothstep(5468.0, 5478.0, cut_z)) * exp(-pow((x - 170.0) / 24.0, 4.0))
-	# A raised far rim whose downslope is the natural landing for a committed jump.
-	h += 9.0 * exp(-pow((cut_z - 5493.0) / 15.0, 2.0)) * exp(-pow((x - 170.0) / 40.0, 4.0))
-	h -= 85.0 * band(x, -170, 490, 25) * band(z - 18.0*sin(x/90.0), 6270, 6340, 16)
-	# These ramps are optional faster lines; a cautious rider can ride around them.
-	for ramp in [Vector2(-80, 1150), Vector2(210, 3320), Vector2(-270, 5070), Vector2(290, 5920), Vector2(0, 6970)]:
-		h += 5.0 * exp(-pow((z - ramp.y) / 22.0, 2.0)) * exp(-pow((x - ramp.x) / 36.0, 4.0))
-	# East summit: wind-drift rollers, a playful optional line where an ollie off
-	# each crest turns into real air (and the first nitro) long before any danger.
-	h += 3.0 * band(x, 70, 420, 60) * band(z, 260, 960, 80) * maxf(0.0, sin((z - 260.0) / 70.0 * TAU * 0.5)) ** 2
-	# Final bowl tabletop: a big launch for riders arriving with nitro to spend.
-	h += 6.0 * exp(-pow((z - 7190.0) / 20.0, 2.0)) * exp(-pow((x + 70.0) / 55.0, 4.0))
-	# Visible perimeter cornices plunge into real lower slopes. No fatal X threshold.
-	h -= maxf(0.0, absf(x) - 520.0) * 1.8
+static func band(v: float, lo: float, hi: float, feather: float) -> float:
+	return smoothstep(lo - feather, lo, v) * (1.0 - smoothstep(hi, hi + feather, v))
+
+# ------------------------------------------------------------------ sampling
+static func _cubic(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
+	return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))
+
+static func _row(o: int, t: float) -> float:
+	return _cubic(heights.decode_u16(o), heights.decode_u16(o + 2), heights.decode_u16(o + 4), heights.decode_u16(o + 6), t)
+
+## Baked large-scale height (bicubic).
+static func macro(x: float, z: float) -> float:
+	if not world_ready:
+		load_world()
+	var fx := clampf((x + extent) / map_step, 1.0, map_n - 3.001)
+	var fz := clampf((z + extent) / map_step, 1.0, map_n - 3.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - ix
+	var stride := map_n * 2
+	var o := ((iz - 1) * map_n + ix - 1) * 2
+	return h_lo + h_scale * _cubic(_row(o, tx), _row(o + stride, tx), _row(o + stride * 2, tx), _row(o + stride * 3, tx), fz - iz)
+
+## Baked mask 0..1 (bilinear).
+static func mask(x: float, z: float, channel: int) -> float:
+	if not world_ready:
+		load_world()
+	var fx := clampf(((x + extent) / map_step - 0.5) / mask_ratio, 0.0, mask_n - 1.001)
+	var fz := clampf(((z + extent) / map_step - 0.5) / mask_ratio, 0.0, mask_n - 1.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - ix
+	var tz := fz - iz
+	var o := channel * mask_n * mask_n + iz * mask_n + ix
+	var a := lerpf(masks[o], masks[o + 1], tx)
+	var b := lerpf(masks[o + mask_n], masks[o + mask_n + 1], tx)
+	return lerpf(a, b, tz) / 255.0
+
+## Ground height (m). Pure function of position: identical on every thread.
+static func height_at(x: float, z: float) -> float:
+	var h := macro(x, z)
+	var grade := Vector2(macro(x + 6.0, z) - h, macro(x, z + 6.0) - h).length() / 6.0
+	# Cliff bands: where the cliff mask says so AND the mountain is steep (judged
+	# over 120 m), the slope is gathered into near-vertical rock risers between
+	# benches that follow the contours. Every factor of the band strength varies
+	# over hundreds of metres -- much more gently than the slope itself falls --
+	# so bands can never pull one spot below all of its neighbours (no pits).
+	# Couloirs are where the mask fades (the baked gullies), so lines through exist.
+	var c := mask(x, z, MASK_CLIFF)
+	if c > 0.02:
+		var broad := Vector2(macro(x + 60.0, z) - macro(x - 60.0, z), macro(x, z + 60.0) - macro(x, z - 60.0)).length() / 120.0
+		c *= smoothstep(0.38, 0.62, broad)
+	if c > 0.02:
+		# Bands break into segments with wide gaps between them: ways through.
+		c *= smoothstep(-0.2, 0.35, _cliff_gaps.get_noise_2d(x, z))
+	if c > 0.02:
+		var wobble := _cliff_noise.get_noise_2d(x, z)
+		# The wobble only nudges where a band sits (its slope stays well below the
+		# 0.35 grade where bands start), so bands follow the contours and never
+		# close into rings around a pit.
+		var p := h / CLIFF_SPACING + wobble * 0.12
+		var f := p - floorf(p)
+		var terraced := (floorf(p) + smoothstep(0.82, 1.0, f) - wobble * 0.12) * CLIFF_SPACING
+		h = lerpf(h, terraced, smoothstep(0.02, 0.6, c) * 0.82)
+	# Cornice lips on the lee of high crests.
+	var cornice := mask(x, z, MASK_CORNICE)
+	if cornice > 0.3:
+		h += smoothstep(0.35, 0.65, cornice) * 4.5
+	# Wind-drift rollers on open snow: broad enough (30-50 m) for the 8 m mesh to
+	# carry them faithfully, steep enough to launch a fast rider. They (and the
+	# small relief) fade on gentle ground so they never dig closed pockets where
+	# a stopped rider could not get out.
+	var drained := smoothstep(0.2, 0.4, grade)
+	var forest := mask(x, z, MASK_FOREST)
+	var open := (1.0 - c) * (1.0 - forest) * drained
+	if open > 0.05:
+		h += smoothstep(0.25, 0.8, _drift.get_noise_2d(x, z)) * 3.6 * open
+	h += _relief.get_noise_2d(x, z) * (0.6 + 2.0 * drained)
 	return h
 
 static func normal_at(x: float, z: float) -> Vector3:
 	return Vector3(height_at(x - 1, z) - height_at(x + 1, z), 2, height_at(x, z - 1) - height_at(x, z + 1)).normalized()
 
-## Snow surface character under the board: x = soft powder, y = wind-scoured ice.
-## Powder collects in sheltered forest and gully bottoms; ice forms on exposed,
-## steep, convex ground. The terrain shader paints the same values (vertex colour),
-## so what the rider SEES is what the board FEELS and HEARS.
-static func surface_at(x: float, distance: float) -> Vector2:
-	var h := height_at(x, distance)
-	var curvature := h - 0.25 * (height_at(x - STEP, distance) + height_at(x + STEP, distance) + height_at(x, distance - STEP) + height_at(x, distance + STEP))
-	return surface_from(x, distance, normal_at(x, distance).y, curvature)
+## Snow surface under the board: x = soft powder, y = wind-scoured ice. The terrain
+## shader paints the same values, so what the rider SEES is what it FEELS.
+static func surface_at(x: float, z: float) -> Vector2:
+	var h := height_at(x, z)
+	var curvature := h - 0.25 * (height_at(x - STEP, z) + height_at(x + STEP, z) + height_at(x, z - STEP) + height_at(x, z + STEP))
+	return surface_from(x, z, normal_at(x, z).y, curvature)
 
-static func surface_from(x: float, distance: float, normal_y: float, curvature: float) -> Vector2:
-	var z := distance / DISTANCE_SCALE
+static func surface_from(x: float, z: float, normal_y: float, curvature: float) -> Vector2:
 	var patch := 0.5 + 0.5 * sin(x / 53.0 + sin(z / 71.0) * 2.0) * sin(z / 97.0 + x / 140.0)
-	var forest := band(z, 2800, 4700, 250)
+	var forest := mask(x, z, MASK_FOREST)
 	var exposed := 1.0 - forest
 	var steep := 1.0 - normal_y
 	var ice := clampf(smoothstep(0.07, 0.24, steep) * 0.65 + smoothstep(0.15, 1.0, curvature) * 0.7 + (patch - 0.62) * 1.3 * exposed, 0.0, 1.0)
 	var powder := clampf(forest * 0.55 + smoothstep(0.15, 1.0, -curvature) * 0.65 + (0.42 - patch) * 0.9, 0.0, 1.0) * (1.0 - ice)
 	return Vector2(powder, ice)
 
-static func region(distance: float) -> String:
-	var z := distance / DISTANCE_SCALE
-	if z < 1100: return "Summit"
-	if z < 2800: return "Cliffs"
-	if z < 4700: return "Forest"
-	if z < 6500: return "Broken Mountain"
-	return "Final Descent"
+static func forest_amount(x: float, z: float) -> float:
+	return mask(x, z, MASK_FOREST)
+
+static func cliff_amount(x: float, z: float) -> float:
+	return mask(x, z, MASK_CLIFF)
+
+## Tree density 0..1: forest belts below the treeline (by face), in clumps.
+static func tree_density(x: float, z: float) -> float:
+	var clump := smoothstep(-0.2, 0.3, _clump.get_noise_2d(x, z))
+	return clampf(mask(x, z, MASK_FOREST) * (0.2 + 0.8 * clump), 0.0, 1.0)
+
+## Rocks gather into gardens and moraines, most below cliffs and high up.
+static func rock_density(x: float, z: float, h: float) -> float:
+	var altitude := smoothstep(summit.y - 2600.0, summit.y - 800.0, h)
+	var amount := 0.1 + 0.5 * mask(x, z, MASK_CLIFF) + 0.25 * altitude
+	return amount * smoothstep(0.05, 0.45, _rock_noise.get_noise_2d(x, z))
+
+## 0..1: how much this spot is valley floor at the base of the mountain.
+static func valley_floor(x: float, z: float) -> float:
+	return mask(x, z, MASK_FINISH)
+
+## The descent is complete here: a real valley floor, well below the summit.
+## (Callers also require the rider to be grounded, upright and riding.)
+static func at_bottom(p: Vector3) -> bool:
+	return valley_floor(p.x, p.z) > 0.5 and p.y < summit.y - FINISH_DROP
+
+## Compass face of a point as seen from the summit ("North", "South-west", ...).
+static func face_name(x: float, z: float) -> String:
+	var az := atan2(x - summit.x, -(z - summit.z))
+	return FACES[posmod(int(round(az / (PI / 4.0))), 8)]
+
+## Region name for presentation (audio exposure, records): face and altitude.
+static func region(x: float, z: float) -> String:
+	var h := height_at(x, z)
+	if h > summit.y - 260.0:
+		return "Summit"
+	if valley_floor(x, z) > 0.5:
+		return face_name(x, z) + " valley"
+	return face_name(x, z) + " face"
+
+## The highest standable point of the world: where every run begins.
+static func spawn_point() -> Vector3:
+	if _spawn != Vector3.INF:
+		return _spawn
+	if not world_ready:
+		load_world()
+	var best := Vector3(summit.x, -INF, summit.z)
+	for iz in range(-12, 13):
+		for ix in range(-12, 13):
+			var x := summit.x + ix * 4.0
+			var z := summit.z + iz * 4.0
+			var h := height_at(x, z)
+			if h > best.y:
+				best = Vector3(x, h, z)
+	_spawn = best
+	return _spawn
+
+static func tile_of(p: Vector3) -> Vector2i:
+	return Vector2i(int(floor((p.x + extent) / TILE)), int(floor((p.z + extent) / TILE)))
+
+static func tile_origin(t: Vector2i) -> Vector2:
+	return Vector2(-extent + t.x * TILE, -extent + t.y * TILE)
+
+static func tiles_per_side() -> int:
+	return int(round(2.0 * extent / TILE))
+
+# ------------------------------------------------------------------ node state
+var terrain_material: ShaderMaterial
+var tree_material: ShaderMaterial
+var rock_material: ShaderMaterial
+var horizon_material: ShaderMaterial
+var tree_variants: Array = []      # [near mesh, far mesh]
+var rock_variants: Array = []      # [mesh, unit points]
+var atmosphere: SnowAtmosphere
+var focus: Node3D                  # the rider (streaming follows it)
+var tree_count := 0
+var rock_count := 0
+var outcrop_count := 0
+## Solid hazards (trees, boulders, outcrops) per loaded L0 tile: Vector4(x, y, z, radius).
+var hazard_buckets: Dictionary = {}
+var tree_buckets: Dictionary = {}
+var l0 := {}          # tile -> {"mesh", "body", "nodes": [], "visible": bool}
+var far := {}         # tile -> Array of nodes (far trees)
+var blocks := {}      # block -> {"node": MeshInstance3D, "comp": PackedByteArray}
+var block_cache := {} # block -> {} tile LOD arrays, written only by that block's task
+var pending := {}     # "kind:key" -> task id
+var task_info := {}   # task id -> [kind, key, extra]
+var results := {}     # task id -> Dictionary
+var mutex := Mutex.new()
+var planting: Array = []   # [tile, scenery] waiting to be planted
+var last_tile := Vector2i(-9999, -9999)
+var plan_timer := 0.0
+## max_frame_ms: the longest main-thread streaming work in one ordinary frame
+## (synchronous builds for teleports/startup are counted separately).
+var stream_stats := {"l0_built": 0, "blocks_built": 0, "sync_builds": 0, "max_frame_ms": 0.0}
 
 func _ready() -> void:
+	load_world()
 	atmosphere = SnowAtmosphere.new()
 	add_child(atmosphere)
 	terrain_material = ShaderMaterial.new()
@@ -161,140 +309,578 @@ func _ready() -> void:
 	tree_material.shader = preload("res://shaders/tree.gdshader")
 	rock_material = ShaderMaterial.new()
 	rock_material.shader = preload("res://shaders/rock.gdshader")
-	# Tree variants: [seed, height, width, tiers, droop, snow]. Heights are per unit scale.
+	horizon_material = ShaderMaterial.new()
+	horizon_material.shader = preload("res://shaders/backdrop.gdshader")
 	for v in [[11, 10.5, 2.9, 9, 0.55, 0.8], [23, 12.5, 2.5, 11, 0.7, 0.95], [37, 8.6, 3.2, 8, 0.45, 0.65], [41, 11.5, 3.0, 10, 0.85, 1.0]]:
 		tree_variants.append([SnowMeshes.conifer(v[0], v[1], v[2], v[3], v[4], v[5]), SnowMeshes.conifer_far(v[1], v[2] * 0.95, v[5])])
-	for seed in [3, 9, 17, 29]:
-		rock_variants.append(SnowMeshes.boulder(seed, 1))
-	var starts: Array[float] = []
-	for start in range(-200, 9600, 200):
-		starts.append(float(start))
-	for start in starts:
-		make_scenery(start)
-	for start in starts:
-		make_outcrops(start)
-	for start in starts:
-		make_chunk(start)
-	make_finish()
-	add_child(SnowBackdrop.new())
-	print("MOUNTAIN ", COURSE_ID, " length=", LENGTH, " width=", WIDTH, " trees=", tree_count, " rocks=", rock_count, " outcrops=", outcrop_count)
+	for rock_seed in [3, 9, 17, 29]:
+		rock_variants.append(SnowMeshes.boulder(rock_seed, 1))
+	var n := tiles_per_side() / BLOCK
+	for bz in n:
+		for bx in n:
+			block_cache[Vector2i(bx, bz)] = {}
+	build_horizon()
+	var start := spawn_point()
+	var t0 := Time.get_ticks_msec()
+	prepare(start)
+	print("MOUNTAIN ", COURSE_ID, " extent=", extent, " summit=", summit, " spawn=", start, " startup_ms=", Time.get_ticks_msec() - t0, " blocks=", blocks.size())
 
-## Approach and landing of the Broken Mountain pinch gap stay clear of scenery so
-## the shortcut is readable and fair (the gap itself is the danger).
-static func gap_line(x: float, z: float) -> bool:
-	var logical := z / DISTANCE_SCALE
-	return absf(x - 170.0) < 34.0 and logical > 5360.0 and logical < 5600.0
+## Worker tasks must never outlive the mountain (they write into its results).
+func _exit_tree() -> void:
+	for name in pending.keys():
+		WorkerThreadPool.wait_for_task_completion(pending[name])
+	pending.clear()
 
-static func bucket(z: float) -> int:
-	return int(floor(z / CHUNK))
+func _process(delta: float) -> void:
+	plan_timer -= delta
+	var p := focus_point()
+	var t := tile_of(p)
+	if t != last_tile or plan_timer <= 0.0:
+		last_tile = t
+		plan_timer = 0.4
+		plan(p)
+	var t0 := Time.get_ticks_usec()
+	poll(4.0)
+	plant_next()
+	stream_stats["max_frame_ms"] = maxf(stream_stats["max_frame_ms"], (Time.get_ticks_usec() - t0) / 1000.0)
+	# Never let the rider stand on terrain without collision.
+	if focus != null:
+		var here := tile_of(focus.global_position)
+		if not l0.has(here):
+			ensure_ready(focus.global_position, 0)
 
-func add_hazard(at: Vector3, radius: float, is_tree: bool) -> void:
-	var key := bucket(at.z)
-	if not hazard_buckets.has(key):
-		hazard_buckets[key] = PackedVector4Array()
-	hazard_buckets[key].append(Vector4(at.x, at.y, at.z, radius))
-	if is_tree:
-		if not tree_buckets.has(key):
-			tree_buckets[key] = PackedVector4Array()
-		tree_buckets[key].append(Vector4(at.x, at.y, at.z, radius))
+func focus_point() -> Vector3:
+	if focus != null and focus.is_inside_tree():
+		var p := focus.global_position
+		if focus is CharacterBody3D:
+			p += (focus as CharacterBody3D).velocity * Vector3(1, 0, 1) * 2.5
+		return p
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	return cam.global_position if cam else spawn_point()
 
-## Solid hazards (trees, boulders, outcrops) within `radius` metres horizontally.
-func hazards_near(at: Vector3, radius: float, trees_only := false) -> Array[Vector4]:
-	var found: Array[Vector4] = []
-	var source := tree_buckets if trees_only else hazard_buckets
-	for key in range(bucket(at.z - radius), bucket(at.z + radius) + 1):
-		if not source.has(key):
+## Build everything needed around `p` and wait for it (startup, restarts, test fixtures).
+func prepare(p: Vector3) -> void:
+	last_tile = tile_of(p)
+	plan(p)
+	while not pending.is_empty():
+		poll(1.0e9, true)
+		plan(p)
+	plant_all()
+
+## Synchronous collision around `p` (radius in tiles), used when the rider is
+## placed somewhere new or would outrun the streamer.
+func ensure_ready(p: Vector3, radius := 1) -> void:
+	var centre := tile_of(p)
+	var missing := false
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var t := centre + Vector2i(dx, dz)
+			if valid_tile(t) and not l0.has(t):
+				missing = true
+				var key := "l0:%s" % t
+				if pending.has(key):
+					complete(key)
+				else:
+					stream_stats["sync_builds"] += 1
+					var data := gen_l0(t)
+					apply_l0(t, data)
+	if missing:
+		for bkey in blocks_near(centre, radius):
+			request_block(bkey, true)
+		plant_all()
+		poll(1.0e9, true)
+
+func valid_tile(t: Vector2i) -> bool:
+	var n := tiles_per_side()
+	return t.x >= 0 and t.y >= 0 and t.x < n and t.y < n
+
+func blocks_near(t: Vector2i, radius: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var b := Vector2i(floori(float(t.x + dx) / BLOCK), floori(float(t.y + dz) / BLOCK))
+			if block_cache.has(b) and not b in out:
+				out.append(b)
+	return out
+
+# ------------------------------------------------------------------ planning
+func plan(p: Vector3) -> void:
+	var centre := tile_of(p)
+	var want_l0 := {}
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var t := centre + Vector2i(dx, dz)
+			if valid_tile(t):
+				want_l0[t] = true
+	var order: Array = want_l0.keys()
+	order.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return (a - centre).length_squared() < (b - centre).length_squared())
+	for t in order:
+		if not l0.has(t):
+			submit("l0", t, gen_l0.bind(t))
+	# Unload L0 tiles two or more tiles away (hysteresis): first give their block
+	# its terrain back, then free the nodes when that block mesh is in place.
+	for t in l0.keys():
+		if maxi(absi(t.x - centre.x), absi(t.y - centre.y)) >= 3:
+			l0[t]["retire"] = true
+	# Far trees on tiles within the scenery radius.
+	var r := int(ceil(SCENERY_RADIUS / TILE)) + 1
+	for dz in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var t := centre + Vector2i(dx, dz)
+			if not valid_tile(t) or far.has(t) or want_l0.has(t):
+				continue
+			if tile_distance(t, p) < SCENERY_RADIUS:
+				submit("far", t, gen_scenery.bind(t))
+	for t in far.keys():
+		if tile_distance(t, p) > SCENERY_RADIUS + 500.0:
+			for node in far[t]:
+				node.queue_free()
+			far.erase(t)
+	for b in block_cache:
+		request_block(b)
+
+func tile_distance(t: Vector2i, p: Vector3) -> float:
+	var o := tile_origin(t) + Vector2(TILE, TILE) * 0.5
+	return o.distance_to(Vector2(p.x, p.z))
+
+func block_composition(b: Vector2i) -> PackedByteArray:
+	var comp := PackedByteArray()
+	comp.resize(BLOCK * BLOCK)
+	var p := focus_point()
+	for j in BLOCK:
+		for i in BLOCK:
+			var t := Vector2i(b.x * BLOCK + i, b.y * BLOCK + j)
+			var lod := 2
+			if l0.has(t) and not l0[t].get("retire", false):
+				lod = 0
+			elif tile_distance(t, p) < L1_RADIUS:
+				lod = 1
+			comp[j * BLOCK + i] = lod
+	return comp
+
+func request_block(b: Vector2i, now := false) -> void:
+	var comp := block_composition(b)
+	var current: Dictionary = blocks.get(b, {})
+	if current.get("comp", PackedByteArray()) == comp and not current.is_empty():
+		return
+	var key := "block:%s" % b
+	if pending.has(key):
+		if not now:
+			return
+		complete(key)
+		if blocks.get(b, {}).get("comp", PackedByteArray()) == comp:
+			return
+	submit("block", b, gen_block.bind(b, comp, block_cache[b]), comp, now)
+	if now:
+		complete(key)
+
+func submit(kind: String, key: Vector2i, job: Callable, extra = null, force := false) -> void:
+	var name := "%s:%s" % [kind, key]
+	if pending.has(name):
+		return
+	if pending.size() >= MAX_TASKS and not force:
+		return
+	var id := WorkerThreadPool.add_task(func() -> void:
+		var out: Dictionary = job.call()
+		mutex.lock()
+		results[name] = out
+		mutex.unlock())
+	pending[name] = id
+	task_info[name] = [kind, key, extra]
+
+## Apply finished work. `budget_ms` limits main-thread time per frame.
+func poll(budget_ms: float, wait := false) -> void:
+	var start := Time.get_ticks_usec()
+	for name in pending.keys():
+		if not pending.has(name):
 			continue
-		for h in source[key]:
-			if Vector2(h.x - at.x, h.z - at.z).length() <= radius + h.w:
-				found.append(h)
-	return found
+		if not wait and not WorkerThreadPool.is_task_completed(pending[name]):
+			continue
+		complete(name)
+		if (Time.get_ticks_usec() - start) / 1000.0 > budget_ms:
+			break
 
-func all_hazards() -> Array[Vector4]:
-	var found: Array[Vector4] = []
-	for key in hazard_buckets:
-		for h in hazard_buckets[key]:
-			found.append(h)
-	return found
+## Wait for one task (exactly once) and apply its result.
+func complete(name: String) -> void:
+	if not pending.has(name):
+		return
+	WorkerThreadPool.wait_for_task_completion(pending[name])
+	pending.erase(name)
+	if true: # (kept as a block so the apply step reads as one unit)
+		mutex.lock()
+		var data: Dictionary = results.get(name, {})
+		results.erase(name)
+		mutex.unlock()
+		var info: Array = task_info[name]
+		task_info.erase(name)
+		match info[0]:
+			"l0":
+				if not l0.has(info[1]):
+					apply_l0(info[1], data)
+			"far":
+				if not far.has(info[1]) and not l0.has(info[1]):
+					apply_far(info[1], data)
+			"block":
+				apply_block(info[1], data, info[2])
 
-func make_chunk(start: float) -> void:
-	# Indexed grid computes each height once (with a border for normals, curvature
-	# and lip detection); rendered and collision triangles are identical.
-	const NX := 150
-	const NZ := 25
-	const B := 3
-	var gw := NX + 1 + B * 2
-	var gh := NZ + 1 + B * 2
-	var heights := PackedFloat32Array()
-	heights.resize(gw * gh)
-	for iz in gh:
+# ------------------------------------------------------------------ generation (worker threads)
+static func gen_l0(t: Vector2i) -> Dictionary:
+	var scenery := gen_scenery(t)
+	var data := gen_grid(t, L0_CELLS, 3, scenery)
+	data["scenery"] = scenery
+	return data
+
+## One tile's terrain grid at `cells` per side. B = border rows for normals,
+## curvature and lip detection. With `scenery`, ambient occlusion is baked in and
+## collision faces are produced.
+static func gen_grid(t: Vector2i, cells: int, b: int, scenery = null) -> Dictionary:
+	var o := tile_origin(t)
+	var step := TILE / cells
+	var gw := cells + 1 + b * 2
+	var hs := PackedFloat32Array()
+	hs.resize(gw * gw)
+	for iz in gw:
 		for ix in gw:
-			heights[iz * gw + ix] = height_at(-WIDTH * 0.5 + (ix - B) * STEP, start + (iz - B) * STEP)
-	# Ambient occlusion pooled around trunks and boulders (baked into vertex alpha).
+			hs[iz * gw + ix] = height_at(o.x + (ix - b) * step, o.y + (iz - b) * step)
+	var n := cells + 1
 	var ao := PackedFloat32Array()
-	ao.resize((NX + 1) * (NZ + 1))
+	ao.resize(n * n)
 	ao.fill(1.0)
-	for h in hazards_near(Vector3(0, 0, start + CHUNK * 0.5), CHUNK * 0.5 + 12.0):
-		var reach := h.w * 2.8 + 3.0
-		var ix0 := int(floor((h.x - reach + WIDTH * 0.5) / STEP))
-		var iz0 := int(floor((h.z - reach - start) / STEP))
-		for iz in range(maxi(iz0, 0), mini(iz0 + int(reach * 2.0 / STEP) + 2, NZ + 1)):
-			for ix in range(maxi(ix0, 0), mini(ix0 + int(reach * 2.0 / STEP) + 2, NX + 1)):
-				var d := Vector2(-WIDTH * 0.5 + ix * STEP - h.x, start + iz * STEP - h.z).length()
-				if d < reach:
-					ao[iz * (NX + 1) + ix] = minf(ao[iz * (NX + 1) + ix], lerpf(0.68, 1.0, d / reach))
+	if scenery != null:
+		for h in scenery["hazards"]:
+			var reach: float = h.w * 2.8 + 3.0
+			var ix0 := int(floor((h.x - reach - o.x) / step))
+			var iz0 := int(floor((h.z - reach - o.y) / step))
+			for iz in range(maxi(iz0, 0), mini(iz0 + int(reach * 2.0 / step) + 2, n)):
+				for ix in range(maxi(ix0, 0), mini(ix0 + int(reach * 2.0 / step) + 2, n)):
+					var d := Vector2(o.x + ix * step - h.x, o.y + iz * step - h.z).length()
+					if d < reach:
+						ao[iz * n + ix] = minf(ao[iz * n + ix], lerpf(0.68, 1.0, d / reach))
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
-	var indices := PackedInt32Array()
-	vertices.resize((NX + 1) * (NZ + 1))
-	normals.resize(vertices.size())
-	colors.resize(vertices.size())
-	for iz in NZ + 1:
-		for ix in NX + 1:
-			var g := (iz + B) * gw + ix + B
-			var x := -WIDTH * 0.5 + ix * STEP
-			var z := start + iz * STEP
-			var h := heights[g]
-			var n := Vector3(heights[g - 1] - heights[g + 1], 2.0 * STEP, heights[g - gw] - heights[g + gw]).normalized()
-			var curvature := h - 0.25 * (heights[g - 1] + heights[g + 1] + heights[g - gw] + heights[g + gw])
-			var s := surface_from(x, z, n.y, curvature)
-			# Lips: snow that falls away far faster than the grade ahead is wind-scoured
-			# and darker, telegraphing a drop long before the rider reaches it.
-			var drop := h - heights[g + gw * B] - 0.34 * STEP * B
-			var side_drop := maxf(h - heights[g - B], h - heights[g + B]) - 2.5
-			var lip := smoothstep(5.0, 14.0, maxf(drop, side_drop))
-			var rock := maxf(smoothstep(0.22, 0.42, 1.0 - n.y), lip * 0.5)
-			var occlusion := ao[iz * (NX + 1) + ix] * (1.0 - clampf(-curvature * 0.08, 0.0, 0.18))
-			var i := iz * (NX + 1) + ix
+	var uvs := PackedVector2Array()
+	vertices.resize(n * n)
+	normals.resize(n * n)
+	colors.resize(n * n)
+	uvs.resize(n * n)
+	var lip_reach := maxi(1, int(round(24.0 / step)))
+	for iz in n:
+		for ix in n:
+			var g := (iz + b) * gw + ix + b
+			var x := o.x + ix * step
+			var z := o.y + iz * step
+			var h := hs[g]
+			var nrm := Vector3(hs[g - 1] - hs[g + 1], 2.0 * step, hs[g - gw] - hs[g + gw]).normalized()
+			var curvature := (h - 0.25 * (hs[g - 1] + hs[g + 1] + hs[g - gw] + hs[g + gw])) * (STEP / step)
+			var s := surface_from(x, z, nrm.y, curvature)
+			# Lips: ground that breaks over far more sharply than its surroundings
+			# (convex in ANY direction) is wind-scoured and darker -- a drop ahead.
+			var lr := mini(lip_reach, b)
+			var around := 0.25 * (hs[g - lr] + hs[g + lr] + hs[g - gw * lr] + hs[g + gw * lr])
+			var lip := smoothstep(3.0, 11.0, h - around)
+			var rock := maxf(smoothstep(0.22, 0.42, 1.0 - nrm.y), lip * 0.5)
+			var i := iz * n + ix
 			vertices[i] = Vector3(x, h, z)
-			normals[i] = n
-			colors[i] = Color(s.x, s.y, rock, occlusion)
-	for iz in NZ:
-		for ix in NX:
-			var a := iz * (NX + 1) + ix
-			indices.append_array(PackedInt32Array([a, a + 1, a + NX + 1, a + 1, a + NX + 2, a + NX + 1]))
+			normals[i] = nrm
+			colors[i] = Color(s.x, s.y, rock, ao[i] * (1.0 - clampf(-curvature * 0.08, 0.0, 0.18)))
+			uvs[i] = Vector2(tree_density(x, z), mask(x, z, MASK_CLIFF))
+	var indices := PackedInt32Array()
+	indices.resize(cells * cells * 6)
+	var k := 0
+	for iz in cells:
+		for ix in cells:
+			var a := iz * n + ix
+			indices[k] = a; indices[k + 1] = a + 1; indices[k + 2] = a + n
+			indices[k + 3] = a + 1; indices[k + 4] = a + n + 1; indices[k + 5] = a + n
+			k += 6
+	var faces := PackedVector3Array()
+	if scenery != null:
+		faces.resize(indices.size())
+		for i in indices.size():
+			faces[i] = vertices[indices[i]]
+	add_skirts(vertices, normals, colors, uvs, indices, n, step * 1.5 + 4.0)
+	return {"v": vertices, "n": normals, "c": colors, "uv": uvs, "i": indices, "faces": faces}
+
+## Vertical curtains under every tile edge hide cracks between resolutions.
+static func add_skirts(v: PackedVector3Array, nm: PackedVector3Array, c: PackedColorArray, uv: PackedVector2Array, idx: PackedInt32Array, n: int, depth: float) -> void:
+	var edges := [[0, 1], [n * (n - 1), 1], [0, n], [n - 1, n]]
+	for e in edges:
+		var start: int = e[0]
+		var stride: int = e[1]
+		var base := v.size()
+		for i in n:
+			var src := start + i * stride
+			v.append(v[src] - Vector3(0, depth, 0))
+			nm.append(nm[src])
+			c.append(c[src])
+			uv.append(uv[src])
+		for i in n - 1:
+			var a := start + i * stride
+			var bb := start + (i + 1) * stride
+			var a2 := base + i
+			var b2 := base + i + 1
+			# Both windings, so the curtain shows from either side.
+			idx.append_array(PackedInt32Array([a, bb, a2, bb, b2, a2, a, a2, bb, bb, a2, b2]))
+
+## One block (5x5 tiles) merged into a single mesh: L1 or L2 pieces per tile and
+## holes where L0 tiles are shown. Pieces are cached per block.
+static func gen_block(b: Vector2i, comp: PackedByteArray, cache: Dictionary) -> Dictionary:
+	var v := PackedVector3Array()
+	var nm := PackedVector3Array()
+	var c := PackedColorArray()
+	var uv := PackedVector2Array()
+	var idx := PackedInt32Array()
+	for j in BLOCK:
+		for i in BLOCK:
+			var lod := comp[j * BLOCK + i]
+			if lod == 0:
+				continue
+			var t := Vector2i(b.x * BLOCK + i, b.y * BLOCK + j)
+			var key := "%d,%d,%d" % [t.x, t.y, lod]
+			if not cache.has(key):
+				cache[key] = gen_grid(t, L1_CELLS if lod == 1 else L2_CELLS, 1)
+			var piece: Dictionary = cache[key]
+			var offset := v.size()
+			v.append_array(piece["v"])
+			nm.append_array(piece["n"])
+			c.append_array(piece["c"])
+			uv.append_array(piece["uv"])
+			var pi: PackedInt32Array = piece["i"]
+			var start := idx.size()
+			idx.append_array(pi)
+			for k in range(start, idx.size()):
+				idx[k] += offset
+	return {"v": v, "n": nm, "c": c, "uv": uv, "i": idx}
+
+## Deterministic scenery for one tile (its own seed: identical whenever and in
+## whatever order tiles stream in). Hazard spacing is checked within the tile,
+## and nothing is planted within 6 m of a tile edge, so order never matters.
+static func gen_scenery(t: Vector2i) -> Dictionary:
+	var o := tile_origin(t)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 74021 + t.x * 92821 + t.y * 6113
+	var looks := RandomNumberGenerator.new()
+	looks.seed = 99173 + t.x * 7919 + t.y * 104729
+	var spawn := spawn_point()
+	var trees := PackedVector4Array()
+	var tree_looks := PackedColorArray()     # r variant, g yaw, b stretch, a unused
+	var tree_custom := PackedColorArray()
+	var rocks: Array = []                    # [variant, Basis, scale Vector3, at Vector3, custom Color, outcrop]
+	var hazards := PackedVector4Array()
+	for i in 980:
+		var x := o.x + rng.randf_range(6.0, TILE - 6.0)
+		var z := o.y + rng.randf_range(6.0, TILE - 6.0)
+		var roll := rng.randf()
+		var size_roll := rng.randf()
+		if roll > tree_density(x, z):
+			continue
+		if Vector2(x - spawn.x, z - spawn.z).length() < 260.0:
+			continue
+		if normal_at(x, z).y < 0.83:
+			continue
+		var h := height_at(x, z)
+		# Stunted near the treeline, tall low down.
+		var grown := smoothstep(summit.y - 1700.0, summit.y - 2900.0, h)
+		var s := lerpf(0.45, 1.0, grown) + size_roll * lerpf(0.4, 1.1, grown)
+		trees.append(Vector4(x, h, z, s))
+		tree_looks.append(Color(looks.randi() % 4, looks.randf() * TAU, looks.randf_range(0.92, 1.12), 0))
+		tree_custom.append(Color(looks.randf_range(0.75, 1.15), looks.randf(), looks.randf(), 0))
+		hazards.append(Vector4(x, h, z, SnowMeshes.TRUNK_RADIUS * s))
+	var tree_hazards := hazards.size()
+	for i in 260:
+		var x := o.x + rng.randf_range(6.0, TILE - 6.0)
+		var z := o.y + rng.randf_range(6.0, TILE - 6.0)
+		var roll := rng.randf()
+		var size_roll := rng.randf()
+		var spin := rng.randf() * TAU
+		var h := height_at(x, z)
+		if roll > rock_density(x, z, h):
+			continue
+		if Vector2(x - spawn.x, z - spawn.z).length() < 120.0 or normal_at(x, z).y < 0.75:
+			continue
+		var s := 1.2 + pow(size_roll, 2.2) * 5.5 * (1.0 + 0.6 * mask(x, z, MASK_CLIFF))
+		var at := Vector3(x, h + s * 0.2, z)
+		# Boulders never touch or pinch: there is always a rideable gap.
+		var clear := true
+		for other in hazards:
+			if Vector2(other.x - x, other.z - z).length() < s * 1.8 + 3.5 + other.w:
+				clear = false
+				break
+		if not clear:
+			continue
+		rocks.append([looks.randi() % 4, Basis.from_euler(Vector3(0.15, spin, 0.1)), Vector3(s * 1.3, s, s), at, Color(looks.randf(), looks.randf(), 0, 0), false])
+		# Unit boulders reach ~1.4 from their centre; record the real footprint.
+		hazards.append(Vector4(at.x, at.y, at.z, s * 1.3 * 1.4))
+	# Craggy outcrops break up cliff risers and steep walls so they read as stone.
+	for i in 200:
+		var x := o.x + rng.randf_range(6.0, TILE - 6.0)
+		var z := o.y + rng.randf_range(6.0, TILE - 6.0)
+		var nrm := normal_at(x, z)
+		var s := rng.randf_range(3.5, 9.0)
+		var sx := rng.randf_range(1.0, 1.8)
+		var sy := rng.randf_range(0.5, 0.9)
+		var sz := rng.randf_range(0.8, 1.3)
+		var yaw := rng.randf() * TAU
+		var variant := rng.randi() % 4
+		if nrm.y > 0.62:
+			continue
+		var up := nrm.lerp(Vector3.UP, 0.35).normalized()
+		var basis := Basis(Vector3.UP, yaw)
+		var axis := Vector3.UP.cross(up)
+		if axis.length() > 0.001:
+			basis = Basis(axis.normalized(), Vector3.UP.angle_to(up)) * basis
+		var at := Vector3(x, height_at(x, z), z) - nrm * s * 0.25
+		rocks.append([variant, basis, Vector3(s * sx, s * sy, s * sz), at, Color(rng.randf(), rng.randf(), 0, 0), true])
+		hazards.append(Vector4(at.x, at.y, at.z, s * maxf(sx, sz) * 1.4))
+	return {"trees": trees, "tree_looks": tree_looks, "tree_custom": tree_custom, "rocks": rocks, "hazards": hazards, "tree_hazards": tree_hazards}
+
+# ------------------------------------------------------------------ applying (main thread)
+func arrays_mesh(data: Dictionary) -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_COLOR] = colors
-	arrays[Mesh.ARRAY_INDEX] = indices
+	arrays[Mesh.ARRAY_VERTEX] = data["v"]
+	arrays[Mesh.ARRAY_NORMAL] = data["n"]
+	arrays[Mesh.ARRAY_COLOR] = data["c"]
+	arrays[Mesh.ARRAY_TEX_UV] = data["uv"]
+	arrays[Mesh.ARRAY_INDEX] = data["i"]
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if (data["v"] as PackedVector3Array).size() > 0:
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+func apply_l0(t: Vector2i, data: Dictionary) -> void:
+	if far.has(t):
+		for node in far[t]:
+			node.queue_free()
+		far.erase(t)
+	var nodes: Array = []
 	var surface := MeshInstance3D.new()
-	surface.mesh = mesh
+	surface.mesh = arrays_mesh(data)
 	surface.material_override = terrain_material
+	surface.visible = false              # shown when its block has made the hole
 	add_child(surface)
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(data["faces"])
 	var collision := CollisionShape3D.new()
-	collision.shape = mesh.create_trimesh_shape()
+	collision.shape = shape
 	body.add_child(collision)
 	add_child(body)
+	nodes.append(body)
+	l0[t] = {"mesh": surface, "nodes": nodes}
+	# Trees and rocks follow on a later frame (the tile is still far ahead), so a
+	# tile never costs one long frame. Fixtures and startup plant at once.
+	planting.append([t, data["scenery"]])
+	stream_stats["l0_built"] += 1
 
-func batch(mesh: Mesh, transforms: Array[Transform3D], custom: Array[Color], mat: Material, range_begin: float, range_end: float, shadows := true) -> void:
-	if transforms.is_empty(): return
+## Plant at most one tile's scenery per call (main thread).
+func plant_next() -> void:
+	while not planting.is_empty():
+		var job: Array = planting.pop_front()
+		var t: Vector2i = job[0]
+		if l0.has(t) and not l0[t].get("planted", false):
+			l0[t]["nodes"].append_array(plant(t, job[1], true))
+			l0[t]["planted"] = true
+			return
+
+func plant_all() -> void:
+	while not planting.is_empty():
+		plant_next()
+
+func apply_far(t: Vector2i, data: Dictionary) -> void:
+	far[t] = plant(t, data, false)
+
+## Trees (and, near the rider, rocks) for a tile. With `solid`, colliders and
+## hazard records are made too.
+func plant(t: Vector2i, scenery: Dictionary, solid: bool) -> Array:
+	var nodes: Array = []
+	var near_x: Array = [[], [], [], []]
+	var near_c: Array = [[], [], [], []]
+	var trees: PackedVector4Array = scenery["trees"]
+	var looks: PackedColorArray = scenery["tree_looks"]
+	var custom: PackedColorArray = scenery["tree_custom"]
+	var tree_body: StaticBody3D = null
+	if solid:
+		tree_body = StaticBody3D.new()
+		tree_body.collision_layer = 2
+		tree_body.set_meta("hazard", "tree")
+	for i in trees.size():
+		var tr := trees[i]
+		var s := tr.w
+		var variant := int(looks[i].r)
+		var xf := Transform3D(Basis(Vector3.UP, looks[i].g).scaled(Vector3(s, s * looks[i].b, s)), Vector3(tr.x, tr.y - 0.3, tr.z))
+		near_x[variant].append(xf)
+		near_c[variant].append(custom[i])
+		if solid:
+			var cylinder := CylinderShape3D.new()
+			cylinder.radius = SnowMeshes.TRUNK_RADIUS * s
+			cylinder.height = SnowMeshes.TRUNK_SOLID_HEIGHT * s
+			var collision := CollisionShape3D.new()
+			collision.shape = cylinder
+			collision.position = Vector3(tr.x, tr.y, tr.z) + Vector3.UP * (SnowMeshes.TRUNK_SOLID_HEIGHT * 0.5 * s - 0.3)
+			tree_body.add_child(collision)
+	for v in 4:
+		var xs: Array[Transform3D] = []
+		xs.assign(near_x[v])
+		var cs: Array[Color] = []
+		cs.assign(near_c[v])
+		if solid:
+			nodes.append(batch(tree_variants[v][0], xs, cs, tree_material, 0.0, TREE_NEAR_RANGE))
+		nodes.append(batch(tree_variants[v][1], xs, cs, tree_material, TREE_NEAR_RANGE if solid else 0.0, TREE_FAR_RANGE, false))
+	if solid:
+		if tree_body.get_child_count() > 0:
+			add_child(tree_body)
+			nodes.append(tree_body)
+		else:
+			tree_body.free()
+		var stones := StaticBody3D.new()
+		stones.collision_layer = 2
+		stones.set_meta("hazard", "rock")
+		var rx: Array = [[], [], [], []]
+		var rc: Array = [[], [], [], []]
+		for r in scenery["rocks"]:
+			var variant: int = r[0]
+			var basis: Basis = r[1]
+			var scale_vec: Vector3 = r[2]
+			var at: Vector3 = r[3]
+			rx[variant].append(Transform3D(basis.scaled_local(scale_vec), at))
+			rc[variant].append(r[4])
+			var points := PackedVector3Array()
+			for p in rock_variants[variant][1]:
+				points.append(p * scale_vec)
+			var hull := ConvexPolygonShape3D.new()
+			hull.points = points
+			var collision := CollisionShape3D.new()
+			collision.shape = hull
+			collision.transform = Transform3D(basis, at)
+			stones.add_child(collision)
+			if r[5]:
+				outcrop_count += 1
+			else:
+				rock_count += 1
+		if stones.get_child_count() > 0:
+			add_child(stones)
+			nodes.append(stones)
+		else:
+			stones.free()
+		for v in 4:
+			var xs: Array[Transform3D] = []
+			xs.assign(rx[v])
+			var cs: Array[Color] = []
+			cs.assign(rc[v])
+			nodes.append(batch(rock_variants[v][0], xs, cs, rock_material, 0.0, ROCK_RANGE))
+		var hz: PackedVector4Array = scenery["hazards"]
+		hazard_buckets[t] = hz
+		tree_buckets[t] = hz.slice(0, scenery["tree_hazards"])
+		tree_count += trees.size()
+	nodes = nodes.filter(func(node): return node != null)
+	return nodes
+
+func batch(mesh: Mesh, transforms: Array[Transform3D], custom: Array[Color], mat: Material, range_begin: float, range_end: float, shadows := true) -> MultiMeshInstance3D:
+	if transforms.is_empty():
+		return null
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D
 	multi.use_custom_data = true
@@ -315,244 +901,113 @@ func batch(mesh: Mesh, transforms: Array[Transform3D], custom: Array[Color], mat
 	instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(instance)
+	return instance
 
-## Tree density 0..1 for a spot: nothing on the summit, wind-stunted krummholz
-## near the treeline, scattered stands through the cliffs, thickets and glades in
-## the forest, sparse survivors in the broken mountain, timbered valley flanks.
-func tree_density(x: float, z: float) -> float:
-	var lz := z / DISTANCE_SCALE
-	var altitude := 0.07 * smoothstep(350.0, 1100.0, lz) + 0.1 * smoothstep(1100.0, 2400.0, lz)
-	altitude += 0.83 * band(lz, 2800, 4700, 250)
-	altitude -= 0.02 * smoothstep(4700.0, 5200.0, lz)
-	var flanks := smoothstep(6400.0, 6900.0, lz) * smoothstep(250.0, 380.0, absf(x)) * 0.45
-	var clump := smoothstep(-0.2, 0.3, clump_noise.get_noise_2d(x, z))
-	return clampf(altitude * (0.22 + 0.78 * clump) + flanks * (0.4 + 0.6 * clump), 0.0, 1.0)
+func apply_block(b: Vector2i, data: Dictionary, comp: PackedByteArray) -> void:
+	var entry: Dictionary = blocks.get(b, {})
+	var node: MeshInstance3D = entry.get("node", null)
+	if node == null:
+		node = MeshInstance3D.new()
+		node.material_override = terrain_material
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(node)
+	node.mesh = arrays_mesh(data)
+	blocks[b] = {"node": node, "comp": comp}
+	stream_stats["blocks_built"] += 1
+	# Show L0 tiles exactly where this block now has holes; retire the rest.
+	for j in BLOCK:
+		for i in BLOCK:
+			var t := Vector2i(b.x * BLOCK + i, b.y * BLOCK + j)
+			if not l0.has(t):
+				continue
+			if comp[j * BLOCK + i] == 0:
+				(l0[t]["mesh"] as MeshInstance3D).visible = true
+			elif l0[t].get("retire", false):
+				unload_l0(t)
 
-## Rocks gather into gardens and moraines rather than an even scatter.
-func rock_density(x: float, z: float) -> float:
-	var lz := z / DISTANCE_SCALE
-	var region_amount := 0.18 + 0.6 * band(lz, 1100, 2800, 200) + 0.5 * band(lz, 4700, 6500, 200) - 0.08 * band(lz, 2800, 4700, 200)
-	return region_amount * smoothstep(0.05, 0.45, rock_noise.get_noise_2d(x, z))
+func unload_l0(t: Vector2i) -> void:
+	var entry: Dictionary = l0[t]
+	(entry["mesh"] as Node).queue_free()
+	for node in entry["nodes"]:
+		if is_instance_valid(node):
+			node.queue_free()
+	l0.erase(t)
+	hazard_buckets.erase(t)
+	tree_buckets.erase(t)
 
-func make_scenery(start: float) -> void:
-	# One seeded generator decides hazard layout per chunk (course massif_v3);
-	# a second only decides looks (variant, yaw, snow load).
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 74021 + int(start) * 13
-	var looks := RandomNumberGenerator.new()
-	looks.seed = 99173 + int(start) * 7
-	var tree_near: Array = [[], [], [], []]
-	var tree_custom: Array = [[], [], [], []]
-	var rocks: Array = [[], [], [], []]
-	var rock_custom: Array = [[], [], [], []]
-	var trees := StaticBody3D.new()
-	trees.name = "Trees%d" % int(start)
-	trees.collision_layer = 2
-	trees.set_meta("hazard", "tree")
-	var stones := StaticBody3D.new()
-	stones.name = "Rocks%d" % int(start)
-	stones.collision_layer = 2
-	stones.set_meta("hazard", "rock")
-	var planted: Array[Vector4] = []
-	for i in 720:
-		var z := rng.randf_range(start, start + 200)
-		var x := rng.randf_range(-505, 505)
-		var roll := rng.randf()
-		var size_roll := rng.randf()
-		if roll > tree_density(x, z): continue
-		var lz := z / DISTANCE_SCALE
-		if absf(x-120) < 25 and lz > 1430 and lz < 1600: continue
-		if gap_line(x, z): continue
-		# The two drainages stay open: creek-bed corridors through the forest.
-		if absf(x - west_line(lz)) < 20.0 or absf(x - east_line(lz)) < 16.0: continue
-		if normal_at(x, z).y < 0.83 or z < 150 or z > FINISH - 60: continue
-		if z > FINISH - 320 and absf(x) < 75.0: continue
-		# Stunted near the treeline, tall in the forest and valley.
-		var grown := smoothstep(900.0, 3000.0, lz)
-		var s := lerpf(0.45, 1.0, grown) + size_roll * lerpf(0.4, 1.1, grown)
-		planted.append(Vector4(x, height_at(x, z), z, s))
-	for t in planted:
-		var at := Vector3(t.x, t.y, t.z)
-		var s := t.w
-		var variant := looks.randi() % 4
-		var yaw := looks.randf() * TAU
-		var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3(s, s * looks.randf_range(0.92, 1.12), s)), at - Vector3.UP * 0.3)
-		tree_near[variant].append(xf)
-		tree_custom[variant].append(Color(looks.randf_range(0.75, 1.15), looks.randf(), looks.randf(), 0))
-		var collision := CollisionShape3D.new()
-		var cylinder := CylinderShape3D.new()
-		cylinder.radius = SnowMeshes.TRUNK_RADIUS * s
-		cylinder.height = SnowMeshes.TRUNK_SOLID_HEIGHT * s
-		collision.shape = cylinder
-		collision.position = at + Vector3.UP * (SnowMeshes.TRUNK_SOLID_HEIGHT * 0.5 * s - 0.3)
-		trees.add_child(collision)
-		add_hazard(at, cylinder.radius, true)
-		tree_count += 1
-	for i in 170:
-		var z := rng.randf_range(start, start + 200)
-		var x := rng.randf_range(-500, 500)
-		var roll := rng.randf()
-		var size_roll := rng.randf()
-		var spin := rng.randf() * TAU
-		if roll > rock_density(x, z): continue
-		var lz := z / DISTANCE_SCALE
-		if absf(x-120) < 40 and lz > 1430 and lz < 1600: continue
-		if gap_line(x, z): continue
-		if normal_at(x, z).y < 0.75 or z < 180 or z > FINISH - 120: continue
-		if z > FINISH - 420 and absf(x) < 90.0: continue # the finish funnel stays clear
-		# A few house-sized erratics among mostly modest boulders.
-		var s := 1.2 + pow(size_roll, 2.2) * 5.5
-		if lz > 1100 and lz < 2800: s *= 1.6
-		var scale_vec := Vector3(s * 1.3, s, s)
-		var rotation_basis := Basis.from_euler(Vector3(0.15, spin, 0.1))
-		var at := Vector3(x, height_at(x, z) + s * 0.2, z)
-		# Boulders never touch or pinch: there is always a rideable gap between
-		# them (and trunks), so rock gardens cannot trap a slow or fallen rider.
-		if not hazards_near(at, s * 1.6 + 3.5).is_empty(): continue
-		add_rock(stones, rocks, rock_custom, looks.randi() % 4, rotation_basis, scale_vec, at, looks)
-	if trees.get_child_count() > 0: add_child(trees)
-	else: trees.free()
-	if stones.get_child_count() > 0: add_child(stones)
-	else: stones.free()
-	for v in 4:
-		var xs: Array[Transform3D] = []
-		xs.assign(tree_near[v])
-		var cs: Array[Color] = []
-		cs.assign(tree_custom[v])
-		batch(tree_variants[v][0], xs, cs, tree_material, 0.0, TREE_NEAR_RANGE)
-		batch(tree_variants[v][1], xs, cs, tree_material, TREE_NEAR_RANGE, TREE_FAR_RANGE, false)
-	# Boulders share batches with this chunk's cliff outcrops (fewer draw calls).
-	pending_rocks[start] = [rocks, rock_custom]
+## Distant ranges beyond the baked area: one coarse ring, no collision.
+func build_horizon() -> void:
+	const STEP_H := 2000.0
+	const OUT := 48000.0
+	var n := int(OUT * 2.0 / STEP_H) + 1
+	var verts := PackedVector3Array()
+	verts.resize(n * n)
+	for iz in n:
+		for ix in n:
+			var x := -OUT + ix * STEP_H
+			var z := -OUT + iz * STEP_H
+			var edge := maxf(absf(x), absf(z))
+			var inner := macro(clampf(x, -extent, extent), clampf(z, -extent, extent)) - 45.0
+			var far_h := 1100.0 + 2300.0 * (_far_noise.get_noise_2d(x, z) * 0.5 + 0.5)
+			verts[iz * n + ix] = Vector3(x, lerpf(inner, far_h, smoothstep(extent, extent + 9000.0, edge)), z)
+	var normals := PackedVector3Array()
+	normals.resize(verts.size())
+	for iz in n:
+		for ix in n:
+			var l := verts[iz * n + maxi(ix - 1, 0)]
+			var rr := verts[iz * n + mini(ix + 1, n - 1)]
+			var u := verts[maxi(iz - 1, 0) * n + ix]
+			var d := verts[mini(iz + 1, n - 1) * n + ix]
+			normals[iz * n + ix] = (d - u).cross(rr - l).normalized()
+	var indices := PackedInt32Array()
+	for iz in n - 1:
+		for ix in n - 1:
+			var x0 := -OUT + ix * STEP_H
+			var z0 := -OUT + iz * STEP_H
+			if x0 >= -extent and x0 + STEP_H <= extent and z0 >= -extent and z0 + STEP_H <= extent:
+				continue
+			var a := iz * n + ix
+			indices.append_array(PackedInt32Array([a, a + 1, a + n, a + 1, a + n + 1, a + n]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var instance := MeshInstance3D.new()
+	instance.name = "Horizon"
+	instance.mesh = mesh
+	instance.material_override = horizon_material
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(instance)
 
-## One faceted rock: identical vertices for the visual instance and the convex hull.
-func add_rock(stones: StaticBody3D, rocks: Array, custom: Array, variant: int, rotation_basis: Basis, scale_vec: Vector3, at: Vector3, looks: RandomNumberGenerator) -> void:
-	rocks[variant].append(Transform3D(rotation_basis.scaled_local(scale_vec), at))
-	custom[variant].append(Color(looks.randf(), looks.randf(), 0, 0))
-	var shape := ConvexPolygonShape3D.new()
-	var points := PackedVector3Array()
-	var radius := 0.0
-	for p in rock_variants[variant][1]:
-		points.append(p * scale_vec)
-		radius = maxf(radius, Vector2(p.x * scale_vec.x, p.z * scale_vec.z).length())
-	shape.points = points
-	var collision := CollisionShape3D.new()
-	collision.shape = shape
-	collision.transform = Transform3D(rotation_basis, at)
-	stones.add_child(collision)
-	add_hazard(at, radius * 0.85, false)
-	rock_count += 1
+# ------------------------------------------------------------------ queries
+func tiles_around(at: Vector3, radius: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var a := tile_of(at - Vector3(radius, 0, radius))
+	var b := tile_of(at + Vector3(radius, 0, radius))
+	for tz in range(a.y, b.y + 1):
+		for tx in range(a.x, b.x + 1):
+			out.append(Vector2i(tx, tz))
+	return out
 
-## Craggy outcrops break up steep gorge walls, buttress faces and escarpments so
-## cliffs read as stone from far away. Each is a solid convex rock.
-func make_outcrops(start: float) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 33091 + int(start) * 11
-	var stones := StaticBody3D.new()
-	stones.name = "Outcrops%d" % int(start)
-	stones.collision_layer = 2
-	stones.set_meta("hazard", "rock")
-	var rocks: Array = pending_rocks[start][0]
-	var custom: Array = pending_rocks[start][1]
-	for i in 160:
-		var x := rng.randf_range(-590, 590)
-		var z := rng.randf_range(start, start + CHUNK)
-		var n := normal_at(x, z)
-		if n.y > 0.62 or z < 60 or z > FINISH - 100:
+## Solid hazards (trees, boulders, outcrops) within `radius` metres horizontally
+## (loaded near the rider only).
+func hazards_near(at: Vector3, radius: float, trees_only := false) -> Array[Vector4]:
+	var found: Array[Vector4] = []
+	var source := tree_buckets if trees_only else hazard_buckets
+	for t in tiles_around(at, radius):
+		if not source.has(t):
 			continue
-		var s := rng.randf_range(3.5, 9.0)
-		var up := n.lerp(Vector3.UP, 0.35).normalized()
-		var basis := Basis(Vector3.UP, rng.randf() * TAU)
-		var axis := Vector3.UP.cross(up)
-		if axis.length() > 0.001:
-			basis = Basis(axis.normalized(), Vector3.UP.angle_to(up)) * basis
-		var scale_vec := Vector3(s * rng.randf_range(1.0, 1.8), s * rng.randf_range(0.5, 0.9), s * rng.randf_range(0.8, 1.3))
-		var at := Vector3(x, height_at(x, z), z) - n * s * 0.25
-		add_rock(stones, rocks, custom, rng.randi() % 4, basis, scale_vec, at, rng)
-		outcrop_count += 1
-	if stones.get_child_count() > 0: add_child(stones)
-	else: stones.free()
-	for v in 4:
-		var rx: Array[Transform3D] = []
-		rx.assign(rocks[v])
-		var rc: Array[Color] = []
-		rc.assign(custom[v])
-		batch(rock_variants[v][0], rx, rc, rock_material, 0.0, ROCK_RANGE)
-	pending_rocks.erase(start)
+		for h in source[t]:
+			if Vector2(h.x - at.x, h.z - at.z).length() <= radius + h.w:
+				found.append(h)
+	return found
 
-func material(color: Color, rough := 0.9) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = rough
-	return mat
-
-func box(at: Vector3, size: Vector3, mat: Material, rot := Vector3.ZERO) -> MeshInstance3D:
-	var node := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	node.mesh = mesh
-	node.material_override = mat
-	node.position = at
-	node.rotation = rot
-	add_child(node)
-	return node
-
-func post(at: Vector3, radius: float, height: float, mat: Material) -> void:
-	var node := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = radius * 0.9
-	mesh.bottom_radius = radius
-	mesh.height = height
-	mesh.radial_segments = 10
-	node.mesh = mesh
-	node.material_override = mat
-	node.position = at + Vector3.UP * height * 0.5
-	add_child(node)
-
-## Natural valley finish: timber gate with a banner, pennant lines funnelling the
-## last 250 m, a timing hut and a snow-level line. Visible from far up the bowl.
-## Decorative only (no colliders): the gate stands outside the |x|<50 finish span.
-func make_finish() -> void:
-	var timber := material(Color("5a3f2b"))
-	var dark_timber := material(Color("3a281c"))
-	var banner := material(Color("e2552a"), 0.7)
-	var cloth := material(Color("f2efe6"), 0.8)
-	var snow_roof := material(Color("eef2f6"), 0.8)
-	var h0 := height_at(0, FINISH)
-	for x in [-56.0, 56.0]:
-		var h := height_at(x, FINISH)
-		for dx in [-1.6, 1.6]:
-			post(Vector3(x + dx, h - 1.0, FINISH), 0.45, 19.0, timber)
-		for y in [4.0, 9.0, 14.0]:
-			box(Vector3(x, h + y, FINISH), Vector3(3.6, 0.35, 0.35), dark_timber, Vector3(0, 0, 0.5))
-	# Cross beam and banner spanning the gate.
-	box(Vector3(0, h0 + 17.5, FINISH), Vector3(118, 0.9, 0.9), timber)
-	box(Vector3(0, h0 + 14.2, FINISH), Vector3(60, 5.2, 0.25), banner)
-	box(Vector3(0, h0 + 14.2, FINISH + 0.05), Vector3(57, 4.4, 0.2), cloth)
-	var sign := Label3D.new()
-	sign.text = "FINISH"
-	sign.font_size = 160
-	sign.outline_size = 0
-	sign.modulate = Color("c8431f")
-	sign.pixel_size = 0.03
-	sign.shaded = true
-	sign.position = Vector3(0, h0 + 14.2, FINISH - 0.2)
-	sign.rotation.y = PI
-	add_child(sign)
-	# Snow-level finish line.
-	for i in 24:
-		var x := -57.5 + i * 5
-		box(Vector3(x, height_at(x, FINISH) + 0.03, FINISH), Vector3(5, 0.06, 1.2), banner if i % 2 == 0 else cloth)
-	# Pennant lines funnel the final approach (outside the riding span).
-	for z in range(int(FINISH - 260), int(FINISH), 20):
-		for x in [-70.0, 70.0]:
-			var h := height_at(x, z)
-			post(Vector3(x, h - 0.5, z), 0.12, 4.0, dark_timber)
-			box(Vector3(x, h + 2.8, z + 10.0), Vector3(0.05, 0.05, 20.0), dark_timber)
-			for k in 4:
-				box(Vector3(x, h + 2.45, z + 2.5 + k * 5.0), Vector3(0.05, 0.7, 0.9), banner if k % 2 == 0 else cloth, Vector3(0, 0, 0))
-	# Timing hut beside the gate.
-	var hx := -95.0
-	var hh := height_at(hx, FINISH + 18)
-	box(Vector3(hx, hh + 2.0, FINISH + 18), Vector3(8, 4.5, 6), timber)
-	box(Vector3(hx, hh + 4.9, FINISH + 18), Vector3(9.4, 0.5, 7.4), snow_roof, Vector3(0, 0, 0.25))
-	box(Vector3(hx + 4.05, hh + 2.2, FINISH + 18), Vector3(0.1, 1.2, 3.0), material(Color("f7c56b"), 0.3))
+func all_hazards() -> Array[Vector4]:
+	var found: Array[Vector4] = []
+	for key in hazard_buckets:
+		for h in hazard_buckets[key]:
+			found.append(h)
+	return found

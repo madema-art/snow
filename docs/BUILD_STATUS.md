@@ -1,4 +1,38 @@
-# Current build status — development pass 7 (rider model)
+# Current build status — development pass 8 (the 360-degree mountain)
+
+Pass 8 rebuilds the world as a true 360-degree mountain at the owner's request: the rider starts on the summit, chooses any side with the left stick, and races to the bottom of the mountain wherever that is. It includes the pass-7 rider model (which had not been pushed yet). Developed in the cloud (software GL, no GPU, no controller, no Windows): appearance was checked in software renders only and nothing here claims real 4K/60 performance or feel.
+
+## Pass 8 changes
+
+**The world** (`tools/build_massif.py` → `world/massif_v4.bin`, `scripts/mountain.gd`; details in MOUNTAIN.md)
+- One alpine massif ~20 km across: summit ~3,740 m at the world origin, a summit ridge with two subsidiary peaks, ten meandering aretes with spurs, bowls, eroded gullies, cliff bands broken by couloirs, cornices, rollers, forests below each face's treeline, valley floors (300–1,050 m) around the whole base, surrounding ranges and a horizon ring to 48 km. Faces have their own characters (north steep and cliffy, east forested, south open snowfields, west ravines). No main course, no preferred axis, no finish gate.
+- Baked offline (deterministic numpy tool, ~40 s): ridge skeleton, aspect-dependent flanks, erosion, pit filling (no closed hollows), masks. Runtime adds cliff bands, cornice lips, rollers and relief.
+- Streaming: 640 m tiles; 8 m render+collision tiles with trees and rocks on the 3×3 around the rider (in whatever direction it travels), 32 m / 128 m merged blocks beyond, far trees to ~1.9 km, painted forest stands and a horizon ring further out. Generation on worker threads; scenery planted a frame later; collision built immediately if ever needed.
+
+**Start, finish, records** (`scripts/rider.gd`, `scripts/run_state.gd`, `scripts/pause_menu.gd`)
+- Start on the summit. Before push-off the left stick turns the board on the spot (clock stopped); push-off goes the way the board points.
+- The finish is the bottom: riding on a valley floor at least 1,500 m below the summit, on any side. No gate, banner or line; the old finish structures are gone.
+- New records files `snow_records_massif_v4[_night].json`, each entry with the side it finished on (shown dimmed in the list). The `massif_v3` and older files are untouched.
+
+**Direction-free physics and recovery**
+- Push-off, get-up heading (down the local fall line), recovery points (uphill of the impact in any direction), and "stand-up" heights (read from the collision surface) no longer assume a downhill axis. A get-up spot must have no cliff edge just below it.
+- A tumble that slides down a rock face is judged like a fall: height lost since last touching gentle ground decides whether it is fatal.
+- Standing pushes chain like skating up to 5 m/s, so nobody can be trapped on a flat.
+
+**Sky for every direction** (`scripts/atmosphere.gd`, `shaders/sky.gdshader`): sun in the south-south-west at ~32°, moon in the east-south-east, aurora owning the northern sky, the Milky Way arching south-west to north-east.
+
+## Pass 8 validation
+
+VALIDATION_TABLE
+
+## Not tested — needs the owner's PC
+
+1. **How the mountain feels to ride**: whether every face reads well from the summit and at speed, whether the cliff bands and couloirs are fair, whether five minutes feels right on your favourite side.
+2. **Performance at 4K/60**: far more terrain is visible than before (blocks, far trees, horizon). Draw-call counts are in the table; real frame times and streaming hitches on the RTX card are unmeasured.
+3. **Night on the new mountain** on a real GPU (the sky was recomposed for every direction).
+4. Everything still listed for passes 6 and 7 below.
+
+# Pass 7 record (history)
 
 Pass 7 rebuilds the rider model. Gameplay, physics, posing logic, sounds and the mountain are unchanged. Developed in the cloud (software GL, no GPU): the look was checked in software renders only.
 

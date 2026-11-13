@@ -38,6 +38,8 @@ const POWDER_DRAG := 0.12
 # --- Left stick forward / back (fixed, alongside the remappable triggers) ---
 const LEAN_DEADZONE := 0.3         # Stick Y below this is ignored so steering never brakes/tucks by accident.
 const RESTART_HOLD := 0.35         # Hold the restart control this long (a tap can never wipe a run).
+## Summit: how fast the left stick turns the board on the spot before push-off (rad/s).
+const SUMMIT_TURN_RATE := 1.7
 
 # --- Deep carve, snow plume and over-lean ---
 const PLUME_START := 0.45          # Edge engagement where the plume begins...
@@ -52,7 +54,7 @@ const OVERLEAN_MIN_SPEED := 7.0    # Slow pivots never tip the rider over.
 const OVERLEAN_FULL_SPEED := 15.0
 
 # --- Standing push ---
-const PUSH_MAX_SPEED := 2.2      # Below this speed A pushes off instead of ollieing.
+const PUSH_MAX_SPEED := 5.0       # A pushes (skates) again below this; pushes chain, so a stopped rider can always skate out of a hollow
 const PUSH_SPEED := 3.2
 
 # --- Ollie / air ---

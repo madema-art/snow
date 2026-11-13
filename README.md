@@ -1,6 +1,6 @@
 # SNOW
 
-A HUD-free, single-rider snowboarding time trial for **Godot 4.7.2 (GDScript)**. One rider stands at the summit of the Massif — a 9.36 km x 1.2 km mountain with ~3.1 km of vertical — and the only goal is to reach the valley finish as fast as possible. Gravity, carving, terrain and nerve decide the time; a good skilled descent takes about five minutes.
+A HUD-free, single-rider snowboarding time trial for **Godot 4.7.2 (GDScript)**. One rider stands on the summit of the Massif — a real, 360-degree alpine mountain about 20 km across with ~3.4 km of vertical — and the only goal is to reach the bottom as fast as possible, down **any** side. Gravity, carving, terrain, route-finding and nerve decide the time; a good skilled descent takes about five minutes.
 
 Repository: <https://github.com/madema-art/snow> (main branch is what the local launcher pulls).
 
@@ -45,7 +45,7 @@ Then follow [docs/QA.md](docs/QA.md): headless import, the four automated suites
 
 | Control | Action |
 |---|---|
-| Left stick | Steer / carve. Push **forward** to crouch into a tuck and gain speed, pull **back** to brake (**fixed**) |
+| Left stick | On the summit: turn the board to choose your side. Riding: steer / carve. Push **forward** to crouch into a tuck and gain speed, pull **back** to brake (**fixed**) |
 | Left stick, leaned hard | Throws a plume of snow out the opposite side and turns tighter. Held at full lean too long, the edge washes out and you tumble |
 | Right stick | Free camera: unlimited orbit, look behind/uphill/across — on snow and in the air. Never steers or spins the rider |
 | RS click | Smoothly recenter the camera |
@@ -68,7 +68,7 @@ Every action except left-stick steering and Menu can be remapped in the pause me
 - Landed jumps and tricks build nitro: bigger air, bigger drops, harder spins/flips/grabs and combinations pay more; clean landings pay more than sketchy ones; repeating the same trick (or spamming hops) quickly stops paying.
 - Falls are momentum physics: the rider is thrown with the speed they had, bounces, rolls and slides to rest (grunting all the way), then gets up there. A tumble that carries over a real drop is fatal.
 - **Every fall instantly wipes all speed and all stored nitro.** Minor/moderate/severe falls cost more or less get-up time; the clock keeps running. Huge cliff drops, falls into gorges and extreme direct impacts end the run (never recorded). There are no health or injury systems and no death zones — only real geometry.
-- Five regions — Summit, Cliffs, Forest, Broken Mountain, Final Descent — on one continuous mountain with no checkpoints or invisible walls. Riding straight down meets rocks and then a fatal gorge. Several routes and optional shortcut jumps exist; see [docs/MOUNTAIN.md](docs/MOUNTAIN.md).
+- One mountain, every direction: steep icy cliffs and couloirs on the north, forests to the east, broad snowfields to the south, ravines and cornices to the west. No course, no checkpoints, no invisible walls, no finish line: the run ends on whichever valley floor you reach. Riding straight down meets real hazards on every side. See [docs/MOUNTAIN.md](docs/MOUNTAIN.md).
 
 ## Saves
 
@@ -76,13 +76,13 @@ All under `user://` (`%APPDATA%\Godot\app_userdata\SNOW\` on Windows), never tou
 
 | File | Contents |
 |---|---|
-| `snow_records_massif_v3.json` | Day top ten (the existing records file, unchanged, so earlier times are kept as Day times) |
-| `snow_records_massif_v3_night.json` | Night top ten |
+| `snow_records_massif_v4.json` | Day top ten on the 360-degree mountain (time and the side it finished on) |
+| `snow_records_massif_v4_night.json` | Night top ten |
 | `snow_settings.json` | Selected time of day |
 | `snow_controls_v2.json` | Button mapping |
 | `snow_camera.json` | Camera distance |
 
-Older record files (v2 and earlier) are kept untouched. Tests only use disposable `test_*` files.
+Older record files from the earlier linear courses (`massif_v3`, v2 and before) are kept untouched; their times are not comparable with the new mountain. Tests only use disposable `test_*` files.
 
 ## Documentation
 

@@ -18,11 +18,18 @@ func go() -> void:
 	# Bench-only overrides; shipped settings stay fullscreen/VSync/60.
 	Engine.max_fps = 0
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-	for logical_z in [8.0, 1400.0, 3500.0, 5350.0, 7450.0]:
-		var z: float = logical_z * SnowMountain.DISTANCE_SCALE
-		var x := -310.0 if logical_z == 1400 else 0.0
+	var mountain: SnowMountain = game.get_node("Mountain")
+	var top := SnowMountain.spawn_point()
+	# Summit, then the north, east, south and west faces (azimuth, distance).
+	for spot in [[0.0, 0.0], [0.0, 2500.0], [95.0, 5500.0], [180.0, 3000.0], [260.0, 3500.0]]:
+		var a := deg_to_rad(spot[0])
+		var p := top + Vector3(sin(a), 0, -cos(a)) * float(spot[1])
+		mountain.prepare(p)
+		var x := p.x
+		var z := p.z
 		rider.position = Vector3(x, SnowMountain.height_at(x,z)+0.7,z)
 		rider.grounded_normal = SnowMountain.normal_at(x,z)
+		rider.heading = SnowRider.fall_heading(rider.position, 0.0)
 		camera.reset()
 		for i in 40:
 			await process_frame
@@ -43,9 +50,9 @@ func go() -> void:
 		var average := float(Time.get_ticks_usec()-begin)/120000.0
 		samples.sort()
 		gpu_samples.sort()
-		print("BENCH region=",SnowMountain.region(z)," explicit_4k_target=",viewport.size," mean_frame_ms=",average," p95_frame_ms=",samples[114]," gpu_median_ms=",gpu_samples[60]," gpu_p95_ms=",gpu_samples[114]," calls=",Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
-	# Look back and down into the real gorge using manual orbit positions.
-	rider.position = Vector3(-310, SnowMountain.height_at(-310,1480*SnowMountain.DISTANCE_SCALE)+0.7,1480*SnowMountain.DISTANCE_SCALE)
+		print("BENCH region=",SnowMountain.region(x, z)," explicit_4k_target=",viewport.size," mean_frame_ms=",average," p95_frame_ms=",samples[114]," gpu_median_ms=",gpu_samples[60]," gpu_p95_ms=",gpu_samples[114]," calls=",Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	# Look along the north face from the summit with a manual orbit.
+	rider.position = top + Vector3(0, 0.7, 0)
 	camera.reset()
 	camera.look_yaw = PI * 0.5
 	camera.lift = 0.65

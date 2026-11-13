@@ -5,29 +5,33 @@ extends SceneTree
 ##   godot --path . --windowed --resolution 1600x900 --script res://tests/visual_capture.gd [-- shot names]
 ## Speed shots set a display-only velocity while the run is still "ready", so the
 ## rider does not move; camera framing/FOV react exactly as when riding.
+## Shots on the 360-degree mountain: [azimuth deg from the summit (0 = north),
+## distance from the summit (m), board heading ("fall" = down the fall line, or
+## degrees), camera look yaw relative to the board, lift (rad, <1) or display speed].
 const SHOTS := {
-	"summit": [0.0, 30.0, 0.0, 0.0, 0.0],
-	"summit_look_back": [0.0, 30.0, 0.0, PI, 0.15],
-	"summit_fast": [-120.0, 900.0, 0.0, 0.0, 34.0],
-	"cliffs_gorge_approach": [-60.0, 1390.0, 0.0, 0.0, 30.0],
-	"cliffs_gorge_side": [-280.0, 1500.0, 0.0, 1.35, 0.35],
-	"cliffs_buttress": [60.0, 2180.0, 0.0, 0.0, 26.0],
-	"forest": [-170.0, 3700.0, 0.0, 0.0, 24.0],
-	"forest_escarpment": [-160.0, 4150.0, 0.0, 0.0, 22.0],
-	"broken": [-300.0, 5000.0, 0.0, 0.0, 30.0],
-	"broken_cut": [170.0, 5400.0, 0.0, 0.0, 28.0],
-	"final": [-40.0, 6950.0, 0.0, 0.0, 38.0],
-	"finish": [0.0, 7480.0, 0.0, 0.0, 20.0],
-	"tree_close": [-150.0, 3520.0, 0.0, 0.0, 0.1],
-	"rider_close": [0.0, 30.0, 0.0, 1.45, 0.12],
-	"rider_carve": [-120.0, 900.0, 0.0, -0.9, 0.12],
-	"nitro": [-80.0, 6700.0, 0.0, -0.5, 0.05],
-	"pause": [0.0, 30.0, 0.0, 0.0, 0.0],
-	"sky_moon": [0.0, 30.0, 0.0, 0.5, -0.22],
-	"sky_aurora": [0.0, 30.0, 0.0, -0.55, -0.2],
-	"sky_up": [0.0, 30.0, 0.0, -0.2, -0.34],
-	"snow_close": [-40.0, 420.0, 0.0, 0.5, 0.42],
-	"slope_night": [-250.0, 1150.0, 0.0, 0.0, 28.0],
+	"summit": [0.0, 0.0, 180.0, 0.0, 0.0],
+	"summit_north": [0.0, 0.0, 0.0, 0.0, 0.0],
+	"summit_east": [0.0, 0.0, 90.0, 0.0, 0.0],
+	"summit_west": [0.0, 0.0, 270.0, 0.0, 0.0],
+	"summit_high": [0.0, 0.0, 135.0, 0.0, 0.62],
+	"north_face": [350.0, 1300.0, "fall", 0.0, 26.0],
+	"north_cliffs": [10.0, 2600.0, "fall", 0.6, 0.3],
+	"east_forest": [95.0, 5200.0, "fall", 0.0, 22.0],
+	"south_snowfields": [180.0, 2600.0, "fall", 0.0, 30.0],
+	"southwest": [225.0, 3600.0, "fall", 0.0, 28.0],
+	"west_ravine": [260.0, 3200.0, "fall", 0.0, 26.0],
+	"northwest": [315.0, 3000.0, "fall", 0.0, 24.0],
+	"valley_south": [185.0, 9800.0, "fall", PI, 0.15],
+	"look_up_from_valley": [120.0, 9000.0, "fall", PI, -0.1],
+	"tree_close": [95.0, 5600.0, "fall", 0.0, 0.1],
+	"rider_close": [0.0, 0.0, 180.0, 1.45, 0.12],
+	"nitro": [180.0, 4200.0, "fall", -0.5, 0.05],
+	"pause": [0.0, 0.0, 180.0, 0.0, 0.0],
+	"sky_moon": [0.0, 0.0, 112.0, 0.0, -0.22],
+	"sky_aurora": [0.0, 0.0, 0.0, 0.0, -0.2],
+	"sky_up": [0.0, 0.0, 200.0, 0.0, -0.34],
+	"snow_close": [180.0, 600.0, "fall", 0.5, 0.42],
+	"slope_night": [150.0, 2200.0, "fall", 0.0, 28.0],
 	"ride_carve": [],
 	"ride_nitro": [],
 	"ride_plume": [],
@@ -76,10 +80,9 @@ func ride(name: String) -> void:
 	await physics_frame
 	Input.action_release("jump")
 	RenderingServer.render_loop_enabled = false
-	var target_x := -150.0
 	for i in 60 * 8:
-		var desired := atan2(target_x - rider.position.x, 60.0)
-		var steer := clampf(-(desired - rider.heading) * 2.5, -1, 1)
+		var desired := SnowRider.fall_heading(rider.position + rider.forward() * 40.0, rider.heading) * 0.7 + rider.heading * 0.3
+		var steer := clampf(-wrapf(desired - rider.heading, -PI, PI) * 2.5, -1, 1)
 		Input.action_press("steer_right", maxf(steer, 0))
 		Input.action_press("steer_left", maxf(-steer, 0))
 		Input.action_press("tuck", 1.0)
@@ -120,18 +123,27 @@ func ride(name: String) -> void:
 		Input.action_release(a)
 	run.restart()
 
+## Board heading (radians, +Z = 0) that faces a compass azimuth (0 = north).
+static func compass_heading(azimuth_deg: float) -> float:
+	var a := deg_to_rad(azimuth_deg)
+	return atan2(sin(a), -cos(a))
+
 func shot(name: String, s: Array) -> void:
 	if name.begins_with("ride_"):
 		await ride(name)
 		return
-	var x: float = s[0]
-	var z: float = s[1] * SnowMountain.DISTANCE_SCALE
 	rider.reset()
-	rider.position = Vector3(x, SnowMountain.height_at(x, z) + 0.7, z)
-	rider.grounded_normal = SnowMountain.normal_at(x, z)
-	rider.heading = s[2]
+	var top := SnowMountain.spawn_point()
+	var az := deg_to_rad(float(s[0]))
+	var x: float = top.x + sin(az) * float(s[1])
+	var z: float = top.z - cos(az) * float(s[1])
+	if float(s[1]) > 0.0:
+		rider.position = Vector3(x, SnowMountain.height_at(x, z) + 0.7, z)
+		rider.mountain.prepare(rider.position)
+	rider.grounded_normal = SnowMountain.normal_at(rider.position.x, rider.position.z)
+	rider.heading = SnowRider.fall_heading(rider.position, 0.0) if s[2] is String else compass_heading(float(s[2]))
 	var speed: float = s[4] if s[4] > 1.0 else 0.0
-	rider.velocity = Vector3(sin(rider.heading), 0, cos(rider.heading)) * speed
+	rider.velocity = rider.forward() * speed
 	rider.speed = speed
 	if name == "snow_close":
 		camera.distance = 3.0
@@ -149,7 +161,7 @@ func shot(name: String, s: Array) -> void:
 	camera.idle = 0.0
 	if name == "rider_close":
 		camera.distance = 3.2
-	for i in 50:
+	for i in 28:
 		if name in ["rider_close", "rider_carve", "nitro", "tree_close", "snow_close"]:
 			camera.distance = 3.4
 		await physics_frame

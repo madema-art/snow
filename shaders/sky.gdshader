@@ -27,10 +27,11 @@ uniform vec3 moon_color = vec3(1.0, 0.96, 0.88);
 uniform float moon_size = 0.021;          // angular radius (rad); a little larger than life
 uniform float star_brightness = 1.0;
 uniform float milky_way_brightness = 1.0;
-uniform vec3 galaxy_pole = vec3(-0.854, 0.071, -0.515); // normal of the Milky Way's plane: the band
+uniform vec3 galaxy_pole = vec3(-0.69, 0.25, -0.68); // normal of the Milky Way's plane: the band
                                                        // climbs from the horizon ahead-right over the zenith
-uniform vec3 galaxy_core = vec3(-0.23, 0.84, 0.49);    // brightest direction along the band
+uniform vec3 galaxy_core = vec3(-0.64, 0.42, 0.64);    // brightest direction along the band
 uniform float aurora_strength = 1.0;
+uniform vec2 aurora_dir = vec2(0.0, -1.0);              // horizontal direction the aurora owns (north)
 uniform float aurora_speed = 1.0;
 
 float vnoise3(vec3 p) {
@@ -109,9 +110,9 @@ vec3 aurora(vec3 d, float dither) {
 		c = mix(c, vec3(1.0, 0.55, 0.75), (1.0 - smoothstep(0.0, 0.09, k)) * 0.3);
 		col += c * sheets * rays * profile;
 	}
-	// It owns one region of the sky (ahead and to the right, away from the moon)
-	// and thins toward the zenith and the horizon.
-	float region = smoothstep(-0.45, 0.5, d.z * 0.8 - d.x * 0.55);
+	// It owns the northern sky (a broad arc either side of north, away from the
+	// moon in the east-south-east) and thins toward the zenith and the horizon.
+	float region = smoothstep(-0.5, 0.45, dot(normalize(d.xz + vec2(0.0001)), normalize(aurora_dir)));
 	float alt = smoothstep(0.03, 0.18, d.y) * (1.0 - smoothstep(0.72, 0.97, d.y));
 	return col * region * alt * 0.4 * aurora_strength;
 }
@@ -152,7 +153,7 @@ vec3 night_sky(vec3 d, bool probe, float dither) {
 	col += vec3(0.55, 0.68, 1.0) * halo;
 	if (probe) {
 		// Ambient/reflection probe: broad light only (moon glow, a breath of aurora).
-		col += vec3(0.05, 0.22, 0.14) * 0.3 * aurora_strength * smoothstep(0.0, 0.4, h) * smoothstep(-0.2, 0.6, d.z);
+		col += vec3(0.05, 0.22, 0.14) * 0.3 * aurora_strength * smoothstep(0.0, 0.4, h) * smoothstep(-0.2, 0.6, dot(d.xz, normalize(aurora_dir)));
 		return col;
 	}
 	if (h > -0.02) {

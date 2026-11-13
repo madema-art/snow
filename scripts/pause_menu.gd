@@ -225,7 +225,10 @@ func refresh() -> void:
 	if run.records.is_empty():
 		text = "[color=#8ea3b8]No completed %s descents yet.[/color]" % mode_name.to_lower()
 	for i in run.records.size():
+		var face: String = run.record_faces[i] if i < run.record_faces.size() else ""
 		var line := "%2d      %s" % [i + 1, SnowRun.clock_text(run.records[i])]
+		if face != "":
+			line += "      [color=#8ea3b8]%s[/color]" % face
 		if i == last_record_rank and run.state == "finished":
 			line = "[color=#ff7a2a][b]%s   ◀[/b][/color]" % line
 		text += line + "\n"
