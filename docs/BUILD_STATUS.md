@@ -1,4 +1,33 @@
-# Current build status — development pass 6
+# Current build status — development pass 7 (rider model)
+
+Pass 7 rebuilds the rider model. Gameplay, physics, posing logic, sounds and the mountain are unchanged. Developed in the cloud (software GL, no GPU): the look was checked in software renders only.
+
+## Pass 7 changes
+
+**Rider model** (`scripts/rider_visual.gd`, new `scripts/rider_mesh.gd`)
+- The capsule-and-sphere mannequin is replaced by sculpted, procedurally swept garments: a fitted red jacket with a charcoal shoulder yoke, cream piping, a front zip, tall collar, hood and a long hem that still flaps at speed; a backpack with lid, compression straps, shoulder harness and an orange sternum buckle; baggy charcoal pants with reinforced knees that flare into cuffs over the boots; flexed boots with sole, toe box, laces and orange dials; curved highbacks, heel cups and padded ankle/toe straps on the bindings; gauntlet mitts with thumbs; a vented helmet with wrap goggles, an amber-to-red mirrored lens, a strap with an orange tab and a dark face mask.
+- Board: a dark two-band top-sheet graphic (still dark when uncharged, so the glow remains the only nitro signal) and a base graphic (cream bands, orange slash) visible in the air and in falls.
+- A slow breathing idle at the summit.
+- Lighter than before: 21 mesh instances, 23 surfaces, ~9.6k triangles (was 32, 34, ~19.4k).
+
+## Pass 7 validation
+
+| Suite | Result |
+|---|---|
+| Import / parse | exit 0, no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` | **93/93** |
+| `terrain_test.gd` | **5/5** |
+| `mountain_test.gd` straight / reference | straight fatal at 1:08.7; reference **5:26.4** (identical to pass 6: the model is visual only) |
+| Cautious / tricks | **6:42.0** / **5:23.5**, 17 rewarded landings (identical to pass 6) |
+
+Renders inspected (software GL): the new `tests/rider_studio.gd` turntable (stand, ride, tuck, toe/heel carve, brake, grab, air; head and boot close-ups) by Day and Night, a before/after comparison against the pass-6 model, and in-game chase shots (summit, close, carve, nitro, plume, tumble).
+
+**Needs the owner's eyes:** how the rider reads at 4K on the real GPU, at speed, by Day and Night; whether the colours (red jacket, charcoal yoke and pants, orange accents) are right.
+
+# Pass 6 record (history)
+
+Pass 6 status as merged:
 
 Pass 6 adds two things: a **Day / Night** choice with a full Night presentation, and a **game-like launch** on Windows (Desktop shortcut with an icon, silent update, no editor). Developed in the cloud with the **official Godot 4.7.2 Linux build**. The container has **no GPU, no audio device, no controller and no Windows** (software GL, simulated input, launcher scripts run under wine with stand-in programs), so nothing here claims hardware feel, listening, real 4K/60 performance or a real-Windows launch.
 

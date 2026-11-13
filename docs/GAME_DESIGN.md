@@ -1,4 +1,4 @@
-# Game design — pass 6
+# Game design — pass 7
 
 **One snowboarder. One enormous mountain. One objective: reach the bottom as fast as possible.**
 
@@ -38,6 +38,8 @@ The right stick is a free look that is held relative to the direction of travel,
 **Day.** Cinematic, realistic-leaning daylight: low raking sun, blue-white shadowed snow, atmospheric depth over kilometres, serrated surrounding ranges, snow-loaded conifers, faceted stone and cliff outcrops, wind ripples and glints on snow, spray, powder bursts and persistent board tracks.
 
 **Night.** The same mountain on a clear night at altitude. A bright moon ahead and to the left of the fall line is the one real light, and its direction matches the disc in the sky, so shadows fall the right way. Above it: a dense field of stars in three sizes with a few warm and blue ones, the Milky Way with dust lanes arching over the valley, and aurora in slow layered curtains — green, cyan and turquoise first, violet above and a pale pink hem, never neon. Snow is silver-blue, a little glossier than by day, with two layers of crystal glints that are fixed to the snow (they sparkle as the view moves, they do not flicker in place) and a faint aurora wash on open slopes. Ridges and peaks read as moonlit faces against black shadow sides. Visibility comes from moonlight, sky light and the snow itself; there is no headlamp, spotlight or screen-space brightening around the rider. Hazards must stay readable at speed: trunks and rock are dark shapes on bright snow, and drop lips keep their scoured dark edge. The rider's clothes pick up a soft rim so the silhouette separates from the slope. The nitro board glow is the one warm thing in the scene and lights a wider pool of snow than by day.
+
+**Rider.** One snowboarder in a red jacket with a charcoal shoulder yoke, charcoal pants flaring over the boots, a white vented helmet, wrap goggles with an amber-red mirrored lens, a face mask, mitts and a small backpack. Orange appears only as small accents (buckle, boot dials, strap tab, base graphic) so it never competes with the nitro glow. The silhouette must read at chase distance in both modes: bent knees, the pack, the helmet and the arms.
 
 **Both.** Speed should feel distinct at 20, 60 and 120 km/h through FOV, framing, spray, wind layers, passing-tree whooshes and rumble — never through screen-obscuring effects.
 

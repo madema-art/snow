@@ -66,6 +66,14 @@ xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 16
 
 Software GL shows composition, colour and readability only; it says nothing about frame rate, and the finest glints/stars look different on a real GPU at 4K.
 
+## 6b. Rider turntable (software GL is fine)
+
+```bash
+xvfb-run -a -s "-screen 0 1200x900x24" godot --path . --windowed --resolution 1200x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/rider_studio.gd
+```
+
+VISUAL FIXTURE: the rider's physics is switched off and its state fields are set directly, so each pose (stand, ride, tuck, toe/heel carve, brake, grab, air) is held still and shot from several sides on the real summit, plus close-ups of the head and boots (`detail`). Writes `work/studio/<pose>_<view>.png`; add `-- --night` for Night and pose names to render a subset. Use it whenever the rider model or its posing changes.
+
 ## 7. Real ride recording (video + the game's actual audio mix)
 
 ```bash

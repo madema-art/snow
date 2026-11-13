@@ -1,10 +1,14 @@
 class_name SnowRiderVisual
 extends Node3D
-## Procedural snowboarder: shaped board with real thickness, camber and upturned
-## tips, bindings (base plates, highbacks, straps), boots, baggy pants, layered
-## jacket, gloves, helmet and goggles. Limbs are posed every frame with analytic
-## two-bone IK against the bindings, so knees absorb terrain, hips drop into a
-## tuck, the whole rig inclines into carves and hands reach for real grabs.
+## Procedural snowboarder: shaped board with real thickness, camber, upturned
+## tips and a base graphic; curved highbacks and strapped bindings; flexed boots;
+## baggy pants that flare over the boots; a fitted jacket with shoulder yoke,
+## piping, zip, collar and hood; a backpack with harness; gauntlet mitts; a vented
+## helmet with wrap goggles, mirrored lens and face mask. Every garment is swept
+## procedurally (SnowRiderMesh) with colour blocking in its vertex colours.
+## Limbs are posed every frame with analytic two-bone IK against the bindings,
+## so knees absorb terrain, hips drop into a tuck, the whole rig inclines into
+## carves and hands reach for real grabs.
 ## The board's own glow is the ONLY nitro indicator.
 var rider: SnowRider
 var board_material: StandardMaterial3D
@@ -41,7 +45,9 @@ func _ready() -> void:
 	rig = Node3D.new()
 	lean_pivot.add_child(rig)
 	board_material = StandardMaterial3D.new()
-	board_material.albedo_color = Color("141a22")
+	board_material.albedo_color = BOARD_TOP
+	board_material.vertex_color_use_as_albedo = true
+	board_material.vertex_color_is_srgb = true
 	board_material.roughness = 0.35
 	board_material.metallic = 0.15
 	board_material.emission_enabled = true
@@ -60,6 +66,31 @@ func _ready() -> void:
 	refresh_charge(0.0)
 
 # ---------------------------------------------------------------- materials
+## Clothing palette (sRGB). The red jacket is the rider's identity: it reads
+## against snow by day and, with the rim light, against moonlit slopes at night.
+const JACKET := Color("c4282f")
+const JACKET_SHADE := Color("8e1c24")
+const YOKE := Color("2b2f36")
+const PIPING := Color("ece5d2")
+const ZIP := Color("17191d")
+const PANTS := Color("30353d")
+const PANTS_DARK := Color("1f2329")
+const PACK := Color("31363d")
+const PACK_LID := Color("4a515b")
+const WEBBING := Color("1b1e22")
+const ACCENT := Color("e2761d")      # the orange of the nitro glow, used sparingly
+const BOOT := Color("2a2d31")
+const SOLE := Color("131417")
+const LACES := Color("7f868f")
+const GLOVE := Color("1b1d21")
+const GLOVE_CUFF := Color("3c424b")
+const HELMET := Color("eceee9")
+const VENT := Color("2a2c30")
+const EARPAD := Color("34373c")
+const MASK := Color("1e2127")
+const FRAME := Color("17181c")
+const BOARD_TOP := Color("232c38")    # times the top-sheet vertex shade: dark when uncharged
+
 func mat(color: Color, rough := 0.75, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
@@ -71,6 +102,13 @@ func mat(color: Color, rough := 0.75, metal := 0.0) -> StandardMaterial3D:
 	m.rim_tint = 0.35
 	return m
 
+## A material whose colour comes from the mesh (colour blocking, seams, stripes).
+func painted(rough: float, metal := 0.0) -> StandardMaterial3D:
+	var m := mat(Color.WHITE, rough, metal)
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	return m
+
 func mesh_part(key: String, mesh: Mesh, material: Material, parent: Node3D = null) -> MeshInstance3D:
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
@@ -78,19 +116,6 @@ func mesh_part(key: String, mesh: Mesh, material: Material, parent: Node3D = nul
 	(rig if parent == null else parent).add_child(instance)
 	parts[key] = instance
 	return instance
-
-func capsule(radius: float, height: float) -> CapsuleMesh:
-	var c := CapsuleMesh.new()
-	c.radius = radius
-	c.height = maxf(height, radius * 2.0 + 0.01)
-	c.radial_segments = 12
-	c.rings = 4
-	return c
-
-func rounded_box(size: Vector3) -> BoxMesh:
-	var b := BoxMesh.new()
-	b.size = size
-	return b
 
 # ---------------------------------------------------------------- board
 func board_half_width(t: float) -> float:
@@ -107,12 +132,24 @@ func board_rise(t: float) -> float:
 	var kick := 0.0 if tip < 0.8 else pow((tip - 0.8) / 0.2, 2.0) * 0.085
 	return kick - 0.006 * (1.0 - t * t) # slight camber under the feet
 
+## Top-sheet shade along the board (multiplies BOARD_TOP and the charge colour):
+## two light bands toward each tip and slightly lighter kicks. Stays dark overall.
+func top_sheet(t: float) -> Color:
+	var a := absf(t)
+	var shade := 0.7
+	if absf(a - 0.7) < 0.045:
+		shade = 1.0
+	elif a > 0.88:
+		shade = 0.85
+	return Color(shade, shade, shade)
+
 func build_board() -> void:
 	const N := 40
 	const LENGTH := 1.56
 	const THICK := 0.022
 	var top := PackedVector3Array()
 	var top_n := PackedVector3Array()
+	var top_c := PackedColorArray()
 	var base := PackedVector3Array()
 	var base_n := PackedVector3Array()
 	var rim := PackedVector3Array()
@@ -136,6 +173,7 @@ func build_board() -> void:
 		for v in [a0, b0, a1, b0, b1, a1]:
 			top.append(v + Vector3(0, THICK, 0))
 			top_n.append(up)
+			top_c.append(top_sheet(v.z / (LENGTH * 0.5)))
 		for v in [a0, a1, b0, b0, a1, b1]:
 			base.append(v)
 			base_n.append(-up)
@@ -149,91 +187,269 @@ func build_board() -> void:
 			for v in quad:
 				rim.append(v)
 				rim_n.append(side)
+	# Base graphic (seen in the air and in falls): dark base, a cream band near
+	# each tip and an orange slash under the stance.
+	var base_c := PackedColorArray()
+	for v in base:
+		var t := v.z / (LENGTH * 0.5)
+		var c := Color("15181d")
+		if absf(absf(t) - 0.62) < 0.07:
+			c = PIPING
+		elif absf(t + v.x * 1.8) < 0.08:
+			c = ACCENT
+		base_c.append(c)
 	var mesh := ArrayMesh.new()
-	for surface in [[top, top_n], [rim, rim_n], [base, base_n]]:
+	for surface in [[top, top_n, top_c], [rim, rim_n, null], [base, base_n, base_c]]:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = surface[0]
 		arrays[Mesh.ARRAY_NORMAL] = surface[1]
+		if surface[2] != null:
+			arrays[Mesh.ARRAY_COLOR] = surface[2]
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var board := MeshInstance3D.new()
 	board.mesh = mesh
 	board.set_surface_override_material(0, board_material)
 	board.set_surface_override_material(1, board_material)
-	board.set_surface_override_material(2, mat(Color("0b0d10"), 0.25, 0.4))
+	board.set_surface_override_material(2, painted(0.25, 0.3))
 	rig.add_child(board)
 	parts["board"] = board
-	# Bindings: base plate, heel cup/highback and two straps per foot.
-	var binding_mat := mat(Color("202428"), 0.5, 0.2)
-	var strap_mat := mat(Color("b8bec4"), 0.45, 0.3)
+	# Bindings and boots, one mesh each per foot. Foot frame: toe toward -X (the
+	# toe edge, where the rider faces), up +Y, along the board +Z.
+	var plastic := painted(0.5, 0.1)
+	var rubber := painted(0.75)
 	for side in [1.0, -1.0]:
 		var foot := Node3D.new()
 		foot.position = Vector3(0, THICK + 0.012, side * STANCE)
 		foot.rotation.y = deg_to_rad(15.0 if side > 0 else -6.0)
 		rig.add_child(foot)
-		mesh_part("plate%d" % side, rounded_box(Vector3(0.27, 0.018, 0.13)), binding_mat, foot)
-		var highback := mesh_part("highback%d" % side, rounded_box(Vector3(0.025, 0.2, 0.15)), binding_mat, foot)
-		highback.position = Vector3(0.115, 0.11, 0)
-		highback.rotation.z = 0.22
-		for strap_x in [-0.08, 0.02]:
-			var strap := mesh_part("strap%d_%s" % [side, strap_x], rounded_box(Vector3(0.05, 0.035, 0.15)), strap_mat, foot)
-			strap.position = Vector3(strap_x, 0.1 if strap_x > 0 else 0.07, 0)
-		var boot := mesh_part("boot%d" % side, capsule(0.075, 0.3), mat(Color("2b2f33"), 0.8), foot)
-		boot.rotation.z = PI * 0.5
-		boot.position = Vector3(-0.015, 0.07, 0)
-		boot.scale = Vector3(1.0, 1.0, 1.15)
+		mesh_part("binding%d" % side, binding_mesh(), plastic, foot)
+		mesh_part("boot%d" % side, boot_mesh(), rubber, foot)
+
+func binding_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	b.box(Vector3(0.0, 0.0, 0.0), Vector3(0.29, 0.016, 0.15), Color("1f2226"), 5.0)
+	# Heel cup and highback: bands bent round the heel; the highback leans forward.
+	var cup := []
+	var back := []
+	var back_h := []
+	for i in 9:
+		var f := deg_to_rad(lerpf(-100.0, 100.0, i / 8.0))
+		cup.append(Vector3(0.035 + 0.09 * cos(f), 0.045, 0.09 * sin(f)))
+	for i in 7:
+		var f := deg_to_rad(lerpf(-68.0, 68.0, i / 6.0))
+		back.append(Vector3(0.05 + 0.088 * cos(f), 0.16, 0.088 * sin(f)))
+		back_h.append(lerpf(0.095, 0.06, absf(i - 3) / 3.0))
+	b.sweep(cup, fill(9, 0.04), fill(9, 0.008), Vector3.UP, Color("25292e"), 8, 4.0)
+	b.sweep(back, back_h, fill(7, 0.008), Vector3.UP, func(v: Vector3, _i: int, _a: float) -> Color:
+		return ACCENT if v.y > 0.235 else Color("25292e"), 8, 4.0, true, Transform3D.IDENTITY,
+		func(v: Vector3) -> Vector3: return v - Vector3((v.y - 0.06) * 0.28, 0, 0))
+	# Ankle strap over the instep and toe strap over the toe box.
+	for spec in [[-0.015, 0.085, 0.11, 0.03, 0.03], [-0.12, 0.07, 0.072, 0.018, 0.025]]:
+		var arc := []
+		for i in 9:
+			var f := deg_to_rad(lerpf(-90.0, 90.0, i / 8.0))
+			arc.append(Vector3(spec[0], spec[4] + spec[2] * cos(f), spec[1] * sin(f)))
+		b.sweep(arc, fill(9, spec[3]), fill(9, 0.011), Vector3.RIGHT, Color("c3c8cd"), 8, 4.0)
+	return b.commit()
+
+func boot_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	b.box(Vector3(-0.045, 0.02, 0.0), Vector3(0.31, 0.024, 0.125), SOLE, 5.0)
+	# Shaft, leaning slightly forward like a flexed boot, with a padded collar.
+	b.column([[0.03, 0.085, 0.07, 0.025], [0.1, 0.082, 0.066, 0.02], [0.17, 0.075, 0.063, 0.012], [0.225, 0.071, 0.063, 0.006], [0.25, 0.064, 0.058, 0.004], [0.258, 0.045, 0.04, 0.004]],
+		func(v: Vector3, _i: int, _a: float) -> Color:
+			if v.y > 0.215: return Color("43484f")
+			if v.x < -0.04 and v.y > 0.08: return LACES
+			return BOOT, 16)
+	# Vamp and toe box.
+	b.sweep([Vector3(0.06, 0.07, 0), Vector3(-0.02, 0.068, 0), Vector3(-0.1, 0.062, 0), Vector3(-0.15, 0.055, 0), Vector3(-0.172, 0.05, 0)],
+		[0.05, 0.05, 0.045, 0.035, 0.02], [0.062, 0.064, 0.062, 0.055, 0.03], Vector3.UP,
+		func(v: Vector3, _i: int, _a: float) -> Color:
+			return LACES if v.y > 0.1 and v.x < 0.0 and v.x > -0.12 else BOOT, 14, 3.0)
+	for z in [0.071, -0.071]:
+		b.ellipsoid(Vector3(0.015, 0.15, z), Vector3(0.019, 0.019, 0.009), ACCENT, 10, 4)
+	return b.commit()
+
+func fill(n: int, value: float) -> Array:
+	var a := []
+	a.resize(n)
+	a.fill(value)
+	return a
 
 # ---------------------------------------------------------------- body
+## Garments are authored in the frame they are posed in:
+## - torso/hem: spine frame, origin at the pelvis, +Y up the spine, front -X,
+##   +Z toward the nose-side shoulder;
+## - limbs: origin at the upper joint, +Y along the bone, +X the limb's front
+##   (knee cap / inside of the elbow);
+## - head: origin at the head centre, front -X.
 func build_body() -> void:
-	var pants := mat(Color("23272e"), 0.9)
-	var jacket := mat(Color("b8262f"), 0.8)
-	var jacket_dark := mat(Color("3a1418"), 0.85)
-	var glove := mat(Color("15171a"), 0.7)
-	var helmet := mat(Color("e9ebe6"), 0.4)
-	var lens := mat(Color("e09a2c"), 0.08, 0.85)
-	var skin := mat(Color("1c1f24"), 0.9) # neck gaiter / face mask
+	var fabric := painted(0.86)
+	mesh_part("torso", torso_mesh(), fabric)
+	mesh_part("hem", hem_mesh(), fabric)
 	for leg in ["front", "back"]:
-		mesh_part("thigh_" + leg, capsule(0.1, THIGH + 0.12), pants)
-		mesh_part("shin_" + leg, capsule(0.088, SHIN + 0.08), pants)
-		mesh_part("knee_" + leg, capsule(0.095, 0.2), pants)
-	mesh_part("pelvis", capsule(0.15, 0.4), pants)
-	mesh_part("torso", capsule(0.19, 0.6), jacket)
-	mesh_part("jacket_hem", capsule(0.2, 0.42), jacket_dark)
-	mesh_part("collar", capsule(0.115, 0.24), jacket_dark)
-	mesh_part("pack", rounded_box(Vector3(0.12, 0.34, 0.26)), jacket_dark)
+		mesh_part("thigh_" + leg, thigh_mesh(), fabric)
+		mesh_part("shin_" + leg, shin_mesh(), fabric)
 	for arm in ["front", "back"]:
-		mesh_part("upper_" + arm, capsule(0.075, UPPER_ARM + 0.1), jacket)
-		mesh_part("fore_" + arm, capsule(0.066, FOREARM + 0.08), jacket)
-		var g := SphereMesh.new()
-		g.radius = 0.06
-		g.height = 0.12
-		mesh_part("glove_" + arm, g, glove)
-	var head := SphereMesh.new()
-	head.radius = 0.135
-	head.height = 0.27
-	mesh_part("helmet", head, helmet)
-	mesh_part("gaiter", capsule(0.1, 0.2), skin)
-	var goggle := rounded_box(Vector3(0.05, 0.075, 0.2))
-	mesh_part("goggles", goggle, lens)
-	var band := CylinderMesh.new()
-	band.top_radius = 0.138
-	band.bottom_radius = 0.138
-	band.height = 0.035
-	band.radial_segments = 16
-	mesh_part("goggle_strap", band, mat(Color("111111"), 0.7))
+		mesh_part("upper_" + arm, upper_arm_mesh(), fabric)
+		mesh_part("fore_" + arm, forearm_mesh(), fabric)
+		mesh_part("glove_" + arm, glove_mesh(1.0 if arm == "front" else -1.0), painted(0.7))
+	var neck := SnowRiderMesh.new()
+	neck.column([[0.0, 0.055, 0.058], [0.12, 0.058, 0.06]], MASK, 12)
+	mesh_part("neck", neck.commit(), fabric)
+	mesh_part("head", helmet_mesh(), painted(0.32))
+	var mask := SnowRiderMesh.new()
+	mask.ellipsoid(Vector3(-0.025, -0.065, 0.0), Vector3(0.1, 0.088, 0.092), MASK, 16, 8)
+	mesh_part("mask", mask.commit(), fabric)
+	mesh_part("lens", lens_mesh(), painted(0.06, 0.8))
+
+func torso_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	# Jacket: waist, chest, squared shoulders; a charcoal yoke over the shoulders
+	# behind cream piping, and a zip down the front.
+	var jacket := SnowRiderMesh.cut([[-0.03, 0.158, 0.208, 0.008], [0.05, 0.152, 0.198, 0.004], [0.14, 0.145, 0.19, 0.0], [0.26, 0.15, 0.2, -0.008],
+		[0.37, 0.155, 0.212, -0.012], [0.45, 0.148, 0.218, -0.01], [0.51, 0.128, 0.212, 0.0], [0.56, 0.1, 0.165, 0.005], [0.595, 0.075, 0.095, 0.005]], [0.476, 0.492])
+	b.column(jacket, func(v: Vector3, _i: int, _a: float) -> Color:
+			# The yoke wraps the shoulders and upper back; the chest stays red.
+			var back := v.x > -0.07 + absf(v.z) * 0.25
+			if v.y > 0.49 and back: return YOKE
+			if v.y > 0.474 and back: return PIPING
+			return JACKET, 20, 2.3)
+	b.front_strip(jacket, -0.03, 0.5, 0.009, ZIP)
+	# Pants seat, hidden under the jacket hem.
+	b.column([[-0.19, 0.05, 0.07, 0.01], [-0.15, 0.1, 0.15, 0.015], [-0.09, 0.125, 0.17, 0.02], [0.0, 0.13, 0.175, 0.015]], PANTS, 16)
+	# Tall collar (charcoal rim) and the hood bunched behind it.
+	b.column(SnowRiderMesh.cut([[0.555, 0.1, 0.107, 0.0], [0.6, 0.095, 0.101, 0.004], [0.66, 0.104, 0.11, 0.01], [0.69, 0.108, 0.114, 0.012], [0.695, 0.09, 0.096, 0.012]], [0.675]),
+		func(v: Vector3, _i: int, _a: float) -> Color: return YOKE if v.y > 0.675 else JACKET, 16)
+	b.ellipsoid(Vector3(0.115, 0.572, 0.0), Vector3(0.045, 0.052, 0.125), YOKE, 14, 6)
+	# Backpack with a lighter lid and two compression straps.
+	b.column(SnowRiderMesh.cut([[0.12, 0.055, 0.125, 0.205], [0.15, 0.066, 0.135, 0.212], [0.4, 0.068, 0.135, 0.215], [0.47, 0.06, 0.125, 0.205], [0.5, 0.04, 0.1, 0.195]], [0.39]),
+		func(v: Vector3, _i: int, _a: float) -> Color:
+			if v.y > 0.39: return PACK_LID
+			if v.x > 0.25 and absf(absf(v.z) - 0.07) < 0.018: return WEBBING
+			return PACK, 16, 4.5)
+	# Shoulder straps over the shoulders and down the chest, and a sternum strap.
+	for side in [1.0, -1.0]:
+		var path := [Vector3(0.215, 0.47, 0.08 * side), Vector3(0.16, 0.545, 0.095 * side), Vector3(0.07, 0.6, 0.11 * side), Vector3(-0.03, 0.595, 0.115 * side),
+			Vector3(-0.125, 0.525, 0.12 * side), Vector3(-0.172, 0.42, 0.115 * side), Vector3(-0.178, 0.32, 0.11 * side), Vector3(-0.162, 0.21, 0.115 * side)]
+		b.sweep(path, fill(8, 0.024), fill(8, 0.009), Vector3.BACK, WEBBING, 8, 4.0)
+	b.box(Vector3(-0.182, 0.36, 0.0), Vector3(0.012, 0.022, 0.24), WEBBING, 4.0)
+	b.box(Vector3(-0.189, 0.36, 0.0), Vector3(0.014, 0.03, 0.045), ACCENT, 4.0)
+	return b.commit()
+
+## The long lower jacket, a separate piece so it can flap in the wind. It falls
+## past the seat and flares enough to cover the tops of the thighs.
+func hem_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	var rings := SnowRiderMesh.cut([[-0.165, 0.168, 0.22, 0.014], [-0.12, 0.166, 0.217, 0.012], [-0.05, 0.16, 0.21, 0.01], [0.0, 0.157, 0.206, 0.007], [0.02, 0.155, 0.202, 0.006]], [-0.128])
+	b.column(rings, func(v: Vector3, _i: int, _a: float) -> Color: return JACKET_SHADE if v.y < -0.128 else JACKET, 20, 2.3, false)
+	b.front_strip(rings, -0.165, 0.02, 0.009, ZIP)
+	return b.commit()
+
+func thigh_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	b.column(SnowRiderMesh.cut([[-0.04, 0.085, 0.09], [0.0, 0.1, 0.104], [0.08, 0.104, 0.106], [0.2, 0.1, 0.102], [0.34, 0.093, 0.095], [0.44, 0.088, 0.09], [0.49, 0.065, 0.065]], [0.38]),
+		func(v: Vector3, _i: int, _a: float) -> Color: return PANTS_DARK if v.y > 0.38 and v.x > 0.03 else PANTS, 16)
+	return b.commit()
+
+func shin_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	# Baggy leg that flares into a cuff over the boot; reinforced knee.
+	b.column(SnowRiderMesh.cut([[-0.06, 0.08, 0.083], [0.0, 0.09, 0.092], [0.1, 0.087, 0.089], [0.24, 0.086, 0.088], [0.33, 0.094, 0.096], [0.4, 0.108, 0.11], [0.445, 0.116, 0.118], [0.465, 0.114, 0.116]], [0.13, 0.42]),
+		func(v: Vector3, _i: int, _a: float) -> Color:
+			if v.y > 0.42: return PANTS_DARK
+			if v.y < 0.13 and v.x > 0.03: return PANTS_DARK
+			return PANTS, 16)
+	return b.commit()
+
+func upper_arm_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	b.column(SnowRiderMesh.cut([[-0.035, 0.05, 0.054], [0.0, 0.077, 0.081], [0.05, 0.078, 0.081], [0.16, 0.073, 0.076], [0.27, 0.068, 0.07], [0.315, 0.062, 0.064], [0.34, 0.04, 0.04]], [0.012, 0.026]),
+		func(v: Vector3, _i: int, _a: float) -> Color:
+			if v.y < 0.012: return YOKE
+			if v.y < 0.026: return PIPING
+			return JACKET, 14)
+	return b.commit()
+
+func forearm_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	b.column(SnowRiderMesh.cut([[-0.03, 0.062, 0.066], [0.02, 0.066, 0.07], [0.14, 0.064, 0.066], [0.215, 0.06, 0.062], [0.235, 0.068, 0.07], [0.285, 0.066, 0.068], [0.3, 0.05, 0.05]], [0.222]),
+		func(v: Vector3, _i: int, _a: float) -> Color: return YOKE if v.y > 0.222 else JACKET, 14)
+	return b.commit()
+
+func glove_mesh(side: float) -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	# Gauntlet over the sleeve, then a mitt flattened across the palm.
+	b.column(SnowRiderMesh.cut([[-0.065, 0.074, 0.078], [-0.02, 0.072, 0.076], [0.0, 0.05, 0.055], [0.03, 0.036, 0.056], [0.08, 0.034, 0.054], [0.11, 0.03, 0.046], [0.125, 0.015, 0.025]], [-0.005]),
+		func(v: Vector3, _i: int, _a: float) -> Color: return GLOVE_CUFF if v.y < -0.005 else GLOVE, 12)
+	b.sweep([Vector3(0.012, 0.012, 0.035 * side), Vector3(0.03, 0.045, 0.055 * side), Vector3(0.035, 0.072, 0.05 * side)], [0.018, 0.017, 0.013], [0.018, 0.017, 0.013], Vector3.RIGHT, GLOVE, 8)
+	return b.commit()
+
+func helmet_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	# Shell: the lower edge rises at the front to leave room for the goggles.
+	var shell := [[-0.05, 0.148, 0.132, 0.012], [-0.01, 0.152, 0.135, 0.01], [0.04, 0.148, 0.131, 0.008], [0.085, 0.128, 0.113, 0.01], [0.12, 0.094, 0.083, 0.012], [0.143, 0.052, 0.046, 0.012], [0.152, 0.015, 0.013, 0.012]]
+	b.column(shell, func(v: Vector3, _i: int, _a: float) -> Color:
+			return EARPAD if absf(v.z) > 0.112 and v.y < 0.025 else HELMET, 24, 2.2, true, Transform3D.IDENTITY,
+		func(v: Vector3) -> Vector3:
+			if v.x < 0.0 and v.y < 0.035:
+				v.y = lerpf(v.y, 0.035, pow(clampf(-v.x / 0.13, 0.0, 1.0), 1.5))
+			return v)
+	# Two vent ridges running front to back over the crown.
+	for z in [0.032, -0.032]:
+		var ridge := []
+		for side in [1.0, -1.0]:
+			var order := range(2, shell.size() - 1) if side > 0.0 else range(shell.size() - 2, 1, -1)
+			for i in order:
+				var r: Array = shell[i]
+				var k := sqrt(maxf(0.0, 1.0 - pow(z / r[2], 2.0)))
+				ridge.append(Vector3(r[3] + side * r[1] * k * 1.02, r[0] + 0.004, z))
+		b.sweep(ridge, fill(ridge.size(), 0.007), fill(ridge.size(), 0.006), Vector3.BACK, VENT, 6, 3.0)
+	# Goggle frame wrapping the face, strap round the back of the helmet.
+	var frame := []
+	var frame_h := []
+	for i in 11:
+		var f := deg_to_rad(lerpf(-75.0, 75.0, i / 10.0))
+		var k := pow(absf(f) / deg_to_rad(75.0), 2.0)
+		var r := 0.124 + 0.022 * k
+		frame.append(Vector3(-r * cos(f), -0.012 + 0.03 * k, (r + 0.006) * sin(f)))
+		frame_h.append(lerpf(0.038, 0.024, k))
+	b.sweep(frame, frame_h, fill(11, 0.012), Vector3.UP, FRAME, 10, 3.0)
+	var strap := []
+	for i in 13:
+		var f := deg_to_rad(lerpf(70.0, 290.0, i / 12.0))
+		strap.append(Vector3(0.01 - 0.158 * cos(f), 0.018, 0.141 * sin(f)))
+	b.sweep(strap, fill(13, 0.021), fill(13, 0.005), Vector3.UP,
+		func(v: Vector3, _i: int, _a: float) -> Color: return ACCENT if v.x > 0.14 else FRAME, 8, 4.0)
+	return b.commit()
+
+func lens_mesh() -> ArrayMesh:
+	var b := SnowRiderMesh.new()
+	var arc := []
+	for i in 11:
+		var f := deg_to_rad(lerpf(-62.0, 62.0, i / 10.0))
+		var k := pow(absf(f) / deg_to_rad(75.0), 2.0)
+		var r := 0.124 + 0.022 * k + 0.02
+		arc.append(Vector3(-r * cos(f), -0.012 + 0.03 * k, (r + 0.006) * sin(f)))
+	# Mirrored lens: amber at the top shading to fire red, like a real coating.
+	b.sweep(arc, fill(11, 0.029), fill(11, 0.006), Vector3.UP,
+		func(v: Vector3, _i: int, _a: float) -> Color: return Color("c4452a").lerp(Color("f5b53e"), clampf((v.y + 0.035) / 0.06, 0.0, 1.0)), 10, 3.0)
+	return b.commit()
 
 # ---------------------------------------------------------------- posing helpers
-func place_segment(key: String, a: Vector3, b: Vector3) -> void:
+## Pose a limb mesh authored along +Y from `a` toward `b`, its +X turned toward `front`.
+func place_bone(key: String, a: Vector3, b: Vector3, front: Vector3) -> void:
 	var node: MeshInstance3D = parts[key]
 	var dir := b - a
-	var length := dir.length()
-	if length < 0.0001:
+	if dir.length() < 0.0001:
 		return
-	var y := dir / length
-	var ref := Vector3.FORWARD if absf(y.dot(Vector3.FORWARD)) < 0.95 else Vector3.RIGHT
-	var x := y.cross(ref).normalized()
-	var z := x.cross(y).normalized()
-	node.transform = Transform3D(Basis(x, y, z), (a + b) * 0.5)
+	var y := dir.normalized()
+	var x := front - y * front.dot(y)
+	if x.length() < 0.0001:
+		x = y.cross(Vector3.FORWARD if absf(y.z) < 0.9 else Vector3.RIGHT)
+	x = x.normalized()
+	node.transform = Transform3D(Basis(x, y, x.cross(y)), a)
 
 func two_bone(root: Vector3, target: Vector3, l1: float, l2: float, pole: Vector3) -> Vector3:
 	var to := target - root
@@ -256,7 +472,7 @@ func refresh_charge(charge: float) -> void:
 	charge = clampf(charge, 0.0, 1.0)
 	charge_shown = charge
 	var warm := Color("ff5a0e").lerp(Color("fff3c4"), maxf(0.0, charge - 0.6) / 0.4)
-	board_material.albedo_color = Color("141a22").lerp(warm.darkened(0.35), charge)
+	board_material.albedo_color = BOARD_TOP.lerp(warm.darkened(0.35), charge)
 	board_material.emission = warm
 	var flare := 1.0
 	if rider != null and rider.boosting:
@@ -364,6 +580,8 @@ func pose(delta: float) -> void:
 		hip_h = 0.55
 	var pelvis := Vector3(-0.06 - crouch_c * 0.05 - tuck * 0.05, hip_h, 0.02 + tuck * 0.05)
 	var t_pitch := 0.18 + crouch_c * 0.32 + tuck * 0.35 + (0.25 if grab else 0.0)
+	if r != null and r.run.state == "ready":
+		t_pitch += 0.018 * sin(time * 1.6)   # slow breathing while waiting at the summit
 	var t_twist := 0.32 + carve * 0.18 + tuck * 0.15
 	if r != null and not on_ground:
 		t_twist += clampf(r.spin_rate * 0.07, -0.4, 0.4)
@@ -383,18 +601,16 @@ func pose(delta: float) -> void:
 		var ankle := Vector3(-0.015, 0.11, s * STANCE)
 		var pole := Vector3(-1.0, 0.25, -s * 0.35)
 		var knee := two_bone(hip, ankle, THIGH, SHIN, pole)
-		place_segment("thigh_" + leg, hip, knee)
-		place_segment("shin_" + leg, knee, ankle)
-		place_segment("knee_" + leg, knee - (knee - hip).normalized() * 0.05, knee + (ankle - knee).normalized() * 0.05)
-	place_segment("pelvis", pelvis + shoulder_axis * 0.12, pelvis - shoulder_axis * 0.12)
-	place_segment("torso", pelvis + spine_up * 0.12, chest + spine_up * 0.02)
+		var knee_front := knee - (hip + ankle) * 0.5
+		if knee_front.length() < 0.02:
+			knee_front = facing
+		place_bone("thigh_" + leg, hip, knee, knee_front)
+		place_bone("shin_" + leg, knee, ankle, knee_front)
+	(parts["torso"] as MeshInstance3D).transform = Transform3D(spine_basis, pelvis)
 	# Jacket hem flutters in the airstream as speed builds.
 	var wind := 0.0 if r == null else clampf(r.speed / 35.0, 0.0, 1.3)
-	var flap := (sin(time * 23.0) * 0.6 + sin(time * 37.0) * 0.4) * 0.03 * wind
-	place_segment("jacket_hem", pelvis + spine_up * 0.02 + shoulder_axis * flap, pelvis + spine_up * 0.22 - facing * flap * 0.5)
-	place_segment("collar", neck - spine_up * 0.06, neck + spine_up * 0.04)
-	var pack: MeshInstance3D = parts["pack"]
-	pack.transform = Transform3D(spine_basis, chest - spine_up * 0.12 - facing * 0.2)
+	var flap := (sin(time * 23.0) * 0.6 + sin(time * 37.0) * 0.4) * 0.045 * wind
+	(parts["hem"] as MeshInstance3D).transform = Transform3D(spine_basis * Basis.from_euler(Vector3(flap, 0.0, flap * 0.6)), pelvis)
 	# Head stays level-ish and looks toward the direction of travel (the nose).
 	var turn_target := 1.1 + (0.0 if r == null else clampf(-r.yaw_rate * 0.25, -0.3, 0.3))
 	if r != null and r.run.state == "ready":
@@ -402,14 +618,9 @@ func pose(delta: float) -> void:
 	head_turn = lerpf(head_turn, turn_target, k)
 	var head_basis := Basis(Vector3.UP, head_turn) * Basis(Vector3.BACK, -0.1)
 	var head_pos := neck + Vector3.UP * 0.15
-	var helmet: MeshInstance3D = parts["helmet"]
-	helmet.transform = Transform3D(head_basis.scaled(Vector3(1.0, 1.05, 0.95)), head_pos)
-	var look := head_basis * Vector3.LEFT
-	var goggles: MeshInstance3D = parts["goggles"]
-	goggles.transform = Transform3D(head_basis, head_pos + look * 0.115 + Vector3.UP * 0.01)
-	var strap: MeshInstance3D = parts["goggle_strap"]
-	strap.transform = Transform3D(head_basis, head_pos + Vector3.UP * 0.01)
-	place_segment("gaiter", neck, head_pos - Vector3.UP * 0.06 + look * 0.03)
+	for key in ["head", "mask", "lens"]:
+		(parts[key] as MeshInstance3D).transform = Transform3D(head_basis, head_pos)
+	place_bone("neck", neck - spine_up * 0.06, head_pos - Vector3.UP * 0.07, facing)
 	# Arms.
 	var lean_v := lean
 	var front_target := chest + spine_basis * Vector3(-0.25, -0.2, 0.55)
@@ -455,7 +666,9 @@ func pose(delta: float) -> void:
 		var shoulder := chest + spine_up * 0.06 + shoulder_axis * (0.22 * s)
 		var hand := reach(shoulder, arm_front if s > 0 else arm_back, UPPER_ARM + FOREARM - 0.01)
 		var elbow := two_bone(shoulder, hand, UPPER_ARM, FOREARM, Vector3(0.3, -1.0, s * 0.6))
-		place_segment("upper_" + arm, shoulder, elbow)
-		place_segment("fore_" + arm, elbow, hand)
-		var glove_node: MeshInstance3D = parts["glove_" + arm]
-		glove_node.position = hand + (hand - elbow).normalized() * 0.03
+		var inside := (shoulder + hand) * 0.5 - elbow
+		if inside.length() < 0.02:
+			inside = facing
+		place_bone("upper_" + arm, shoulder, elbow, inside)
+		place_bone("fore_" + arm, elbow, hand, inside)
+		place_bone("glove_" + arm, hand, hand + (hand - elbow), inside)
