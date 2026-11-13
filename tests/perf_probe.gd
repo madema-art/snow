@@ -5,8 +5,9 @@ extends SceneTree
 ## hardware-independent; frame times are only meaningful on the target GPU, so
 ## the probe labels them with the active renderer/device.
 ##   godot --path . --resolution 3840x2160 --script res://tests/perf_probe.gd
-const SPOTS := [["Summit", -40.0, 300.0], ["Cliffs", -300.0, 1380.0], ["Forest", -150.0, 3500.0],
-	["Broken Mountain", -300.0, 5300.0], ["Final Descent", -40.0, 7000.0], ["Finish", 0.0, 7560.0]]
+## [label, azimuth deg from the summit (0 = north), distance from the summit (m)]
+const SPOTS := [["Summit", 180.0, 0.0], ["North face", 0.0, 2500.0], ["East forest", 95.0, 5500.0],
+	["South snowfields", 180.0, 3000.0], ["West ravines", 260.0, 3500.0], ["South valley", 185.0, 9800.0]]
 
 func _initialize() -> void: go.call_deferred()
 
@@ -20,11 +21,16 @@ func go() -> void:
 	Engine.max_fps = 0
 	print("PERF device=", RenderingServer.get_video_adapter_name(), " driver=", RenderingServer.get_current_rendering_driver_name(), " size=", root.get_visible_rect().size, " startup_ms=", startup)
 	for spot in SPOTS:
-		var z: float = spot[2] * SnowMountain.DISTANCE_SCALE
 		rider.reset()
-		rider.position = Vector3(spot[1], SnowMountain.height_at(spot[1], z) + 0.7, z)
-		rider.velocity = Vector3(0, 0, 30)
-		rider.speed = 30.0
+		var top := SnowMountain.spawn_point()
+		var az := deg_to_rad(float(spot[1]))
+		var p := top + Vector3(sin(az), 0, -cos(az)) * float(spot[2])
+		if float(spot[2]) > 0.0:
+			game.get_node("Mountain").prepare(p)
+			rider.position = Vector3(p.x, SnowMountain.height_at(p.x, p.z) + 0.7, p.z)
+			rider.heading = SnowRider.fall_heading(rider.position, 0.0)
+			rider.velocity = rider.forward() * 30.0
+			rider.speed = 30.0
 		camera.reset()
 		for i in 12:
 			await physics_frame

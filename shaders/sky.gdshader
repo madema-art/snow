@@ -27,10 +27,11 @@ uniform vec3 moon_color = vec3(1.0, 0.96, 0.88);
 uniform float moon_size = 0.021;          // angular radius (rad); a little larger than life
 uniform float star_brightness = 1.0;
 uniform float milky_way_brightness = 1.0;
-uniform vec3 galaxy_pole = vec3(-0.854, 0.071, -0.515); // normal of the Milky Way's plane: the band
+uniform vec3 galaxy_pole = vec3(-0.69, 0.25, -0.68); // normal of the Milky Way's plane: the band
                                                        // climbs from the horizon ahead-right over the zenith
-uniform vec3 galaxy_core = vec3(-0.23, 0.84, 0.49);    // brightest direction along the band
+uniform vec3 galaxy_core = vec3(-0.64, 0.42, 0.64);    // brightest direction along the band
 uniform float aurora_strength = 1.0;
+uniform vec2 aurora_dir = vec2(0.0, -1.0);              // horizontal direction the aurora owns (north)
 uniform float aurora_speed = 1.0;
 
 float vnoise3(vec3 p) {
@@ -92,7 +93,11 @@ vec3 aurora(vec3 d, float dither) {
 		// A per-pixel offset between the planes hides their stepping.
 		float k = (float(i) + dither) / 16.0;
 		float height = 0.8 + k * 1.15;
-		vec2 uv = d.xz / (d.y + 0.14) * height;
+		// Curtain space: .y runs away from the viewer toward the aurora's side of
+		// the sky (aurora_dir), .x along the horizon.
+		vec2 toward = normalize(aurora_dir);
+		vec2 flat_d = vec2(dot(d.xz, vec2(toward.y, -toward.x)), dot(d.xz, toward));
+		vec2 uv = flat_d / (d.y + 0.14) * height;
 		float warp = vnoise(uv * 0.3 + vec2(t, 0.0)) * 1.9 + vnoise(uv * 0.9 - vec2(0.0, t * 1.6)) * 0.5 + sin(uv.x * 0.22 + t * 1.3) * 0.9;
 		float c1 = uv.y - (2.3 + warp);
 		float c2 = uv.y - (4.3 + warp * 1.3 + sin(uv.x * 0.41 - t * 2.0) * 0.6);
@@ -109,9 +114,9 @@ vec3 aurora(vec3 d, float dither) {
 		c = mix(c, vec3(1.0, 0.55, 0.75), (1.0 - smoothstep(0.0, 0.09, k)) * 0.3);
 		col += c * sheets * rays * profile;
 	}
-	// It owns one region of the sky (ahead and to the right, away from the moon)
-	// and thins toward the zenith and the horizon.
-	float region = smoothstep(-0.45, 0.5, d.z * 0.8 - d.x * 0.55);
+	// It owns the northern sky (a broad arc either side of north, away from the
+	// moon in the east-south-east) and thins toward the zenith and the horizon.
+	float region = smoothstep(-0.5, 0.45, dot(normalize(d.xz + vec2(0.0001)), normalize(aurora_dir)));
 	float alt = smoothstep(0.03, 0.18, d.y) * (1.0 - smoothstep(0.72, 0.97, d.y));
 	return col * region * alt * 0.4 * aurora_strength;
 }
@@ -152,7 +157,7 @@ vec3 night_sky(vec3 d, bool probe, float dither) {
 	col += vec3(0.55, 0.68, 1.0) * halo;
 	if (probe) {
 		// Ambient/reflection probe: broad light only (moon glow, a breath of aurora).
-		col += vec3(0.05, 0.22, 0.14) * 0.3 * aurora_strength * smoothstep(0.0, 0.4, h) * smoothstep(-0.2, 0.6, d.z);
+		col += vec3(0.05, 0.22, 0.14) * 0.3 * aurora_strength * smoothstep(0.0, 0.4, h) * smoothstep(-0.2, 0.6, dot(d.xz, normalize(aurora_dir)));
 		return col;
 	}
 	if (h > -0.02) {

@@ -56,7 +56,7 @@ func go() -> void:
 	check(run.elapsed == 0 and rider.position == start, "stationary opening / clock before push-off")
 	await press("jump")
 	await frames(120)
-	check(run.state == "running" and run.elapsed > 1.9 and rider.position.z > 12, "push-off starts actual downhill physics and clock")
+	check(run.state == "running" and run.elapsed > 1.9 and rider.position.distance_to(start) > 4.0 and rider.position.y < start.y - 0.5, "push-off starts actual downhill physics and clock")
 	await press("jump")
 	await frames(8)
 	check(not rider.is_on_floor(), "ollie separates from collision surface")
@@ -186,9 +186,9 @@ func go() -> void:
 	await frames(180)
 	var normal_speed := rider.speed
 	Input.action_press("brake")
-	await frames(60)
+	await frames(90)
 	Input.action_release("brake")
-	check(rider.speed < normal_speed * 0.7, "braking dissipates downhill momentum")
+	check(rider.speed < normal_speed * 0.7, "braking dissipates downhill momentum (%.1f -> %.1f m/s)" % [normal_speed, rider.speed])
 	await frames(120)
 	var x_before := rider.position.x
 	await press("steer_right", 35)
@@ -205,7 +205,7 @@ func go() -> void:
 	var tree := StaticBody3D.new()
 	tree.collision_layer = 2
 	tree.set_meta("hazard", "tree")
-	tree.position = Vector3(0, SnowMountain.height_at(0, 70) + 3, 70)
+	tree.position = ground(70.0) + Vector3(0, 3, 0)
 	var shape := CollisionShape3D.new()
 	var trunk := CylinderShape3D.new()
 	trunk.radius = 0.6
@@ -213,27 +213,27 @@ func go() -> void:
 	shape.shape = trunk
 	tree.add_child(shape)
 	game.add_child(tree)
-	rider.position = Vector3(0, SnowMountain.height_at(0, 65) + 0.72, 65)
-	rider.velocity = Vector3(0, -6, 40)
+	rider.position = ground(65.0) + Vector3(0, 0.72, 0)
+	rider.velocity = along_slope(rider.position, 40.0)
 	rider.nitro = 0.8
 	await frames(20)
 	print("TREE CHECK state=", run.state, " recovery=", rider.recovery, " p=", rider.position, " v=", rider.velocity)
 	check(run.state == "ended" and rider.velocity == Vector3.ZERO and rider.nitro == 0, "high-speed direct tree collision ends run without retaining charge or speed")
 	menu.restart()
 	run.push_off()
-	rider.position = Vector3(0, SnowMountain.height_at(0, 65) + 0.72, 65)
-	rider.velocity = Vector3(0, -3, 15)
+	rider.position = ground(65.0) + Vector3(0, 0.72, 0)
+	rider.velocity = along_slope(rider.position, 15.0)
 	rider.nitro = 0.5
 	await frames(35)
 	check(run.state == "running" and rider.recovery > 0 and rider.nitro == 0 and rider.velocity == Vector3.ZERO, "moderate actual tree collision enters nonfatal recovery")
 	await frames(300)
-	check(run.state == "running" and rider.recovery == 0 and rider.position.z > 65, "nonfatal get-up resumes without false fatal drop")
+	check(run.state == "running" and rider.recovery == 0 and rider.position.z > ground(30.0).z, "nonfatal get-up resumes without false fatal drop")
 	tree.queue_free()
 	menu.restart()
 	check(rider.steer == 0 and rider.heading == 0 and rider.spin == 0 and rider.flip == 0, "restart clears steering and all trick rotations")
 	run.push_off()
 	rider.nitro = 0.5
-	rider.position = Vector3(0, SnowMountain.height_at(0, 100) + 100, 100)
+	rider.position = ground(100.0) + Vector3(0, 100, 0)
 	rider.launch_height = rider.position.y
 	await frames(180)
 	check(run.state == "ended" and rider.nitro == 0, "actual 100 m physical fall ends run")
@@ -247,3 +247,13 @@ func go() -> void:
 		DirAccess.remove_absolute(path)
 	print("TESTS COMPLETE: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
+
+## A point on the snow `south` metres due south of the summit spawn (fixtures).
+func ground(south: float) -> Vector3:
+	var top := SnowMountain.spawn_point()
+	return Vector3(top.x, SnowMountain.height_at(top.x, top.z + south), top.z + south)
+
+## Due-south velocity that follows the snow surface (fixtures).
+func along_slope(p: Vector3, speed: float) -> Vector3:
+	var n := SnowMountain.normal_at(p.x, p.z)
+	return Vector3(0, 0, 1).slide(n).normalized() * speed

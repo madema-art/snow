@@ -1,4 +1,4 @@
-# QA and reproducible validation — pass 6
+# QA and reproducible validation — pass 8
 
 Godot can exit 0 after a script error: always grep logs for `SCRIPT ERROR` / `ERROR` and `FAIL`. Keep logs and renders in the git-ignored `work/` folder. All persistence fixtures use disposable `user://test_*.json` files and delete them.
 
@@ -31,24 +31,40 @@ godot --headless --path . --fixed-fps 60 --script res://tests/feel_test.gd
 
 Pass 6: a fresh install is Day; the selector exists and is enabled at the summit; choosing Night applies and cross-fades while the game is paused; the music player and its position are untouched by the change; the choice is saved and reloaded; the selector is disabled and `set_mode` refused mid-run; the launch title is gone once riding; no CanvasLayer item is visible during a descent (no HUD); a Night finish is recorded only in the Night file and list; the mode can be changed again after the run; the menu shows the selected mode's leaderboard and title; both files reload separately; switching back restores the exact Day lighting values; branding and launcher files are in place. Pass 5: momentum tumbles (faster falls travel farther, body frozen at zero riding speed, several impacts, groan, get-up at rest), fatal tumble over the gorge lip (fixture), first-hit and rolling grunts, plume from a committed carve without tipping, over-lean fall after ~1.9 s at full lock, braking exception, left stick forward tuck / back brake / deadzone via real joypad events, restart needs a hold, View cycles camera range and persists, older saved mappings upgrade without losing remaps. Trick economy (no pay for tiny hops; harder > easier; combos; drop size; landing quality; per-trick fatigue; spam cap; fatigue recovery; reward cap), clean 180 switch, misaligned-landing fall, nitro partial/deplete/empty sputter, nitro adds no grip, crash wipe and dark board, tumble moves only the visual (body has zero speed/travel/nitro), get-up costs time and gains no ground, crash tiers, free look held relative to travel while carving, camera yaw composition, idle settle, look-back never redirects, fatal beat then results, disconnect auto-pause, record rank, binding names, soundtrack manager on the real `assets/music` files (fixed opener, every other song before repeats, full reshuffles with no back-to-back repeats over 25 cycles, crossfade, pause holds position, resume, restart never touches music, results keep playing, ducking, missing-opener fallback, no-music silence). Some steps set state directly and are labelled fixtures. Expect `FEEL TESTS failures=0`.
 
-## 4. Local terrain / shortcut fixtures
+## 4. Terrain and streaming fixtures
 
 ```bash
 godot --headless --path . --fixed-fps 60 --script res://tests/terrain_test.gd
 ```
 
-Seam momentum at 40 m/s; gorge spur ollie (X=120) clears and lands with nitro; Broken Mountain pinch gap (X=170) clears with an ordinary ollie at ~30 m/s and lands cleanly with nitro. The rider is PLACED near each feature: these are local fixtures, not the full-course proof.
+LOCAL fixtures on the 360-degree mountain: collision vertices sit on the analytic terrain (render == collision); a 40 m/s run across an L0 tile seam keeps its momentum; the 3x3 collision tiles stream around the rider in every direction and memory stays bounded; rollers on the open south face launch a fast rider. Prints `STREAM stats` (tiles built, synchronous builds, longest main-thread apply). Expect `TERRAIN TESTS failures=0`.
 
-## 5. Whole course (ordinary inputs only)
+## 5. The whole mountain, every direction (ordinary inputs only)
 
 ```bash
 godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --cautious
 godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --tricks
 godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --camera-only
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --map            # writes work/route_map.png
+godot --headless --path . --fixed-fps 60 --script res://tests/mountain_test.gd -- --no-straight --sectors=N,W
 ```
 
-Each run first does camera checks, then **A: straight** (push-off, no steering; must not finish — meets rocks then a fatal gorge), then **B/C: controlled** (route knowledge + local hazard avoidance; only steer/brake/tuck — plus ollie/spin/grab/boost in `--tricks`; it may read state to decide but never writes position, velocity, heading, nitro or time). Reports time, 3D distance, peak speed, falls, and for `--tricks` the rewarded landings, nitro earned and boost seconds. Run profiles sequentially (shared disposable records file). Bot results are traversability evidence, not human difficulty.
+1. Summit camera: full 360 orbit, pitch range, camera never turns the board, collision retraction.
+2. **Straight lines** N, E, S, W: aim with the left stick, push off, no further input. None may make a clean descent.
+3. **Every sector** N, NE, E, SE, S, SW, W, NW: the bot aims the board with the LEFT STICK on the summit (the clock must stay at zero), pushes off and rides with ordinary inputs (steer, brake, tuck; + ollie/spin/grab/nitro with `--tricks`) along a route it planned itself: Dijkstra over a 50 m grid of the real terrain that never enters cliff cells, never climbs more than a few metres, prefers to keep clear of cliffs and trees, and stays in its sector. It reads the terrain ahead to avoid drops over ~18 m, dodges the trees and rocks it can see, skates out of flats and replans if knocked off its line. It never writes position, velocity, heading, nitro or the clock.
+   Checks per sector: gravity takes the board away from the summit; the run reaches the bottom (`run.state == "finished"`); it finished on its own side (face within one compass step); the chase camera follows the actual direction of travel; a real descent (> 1,500 m drop, > 5 km travelled). Overall: median time about five minutes (cautious: longer); one shared top ten.
+   Bot results are traversability evidence, not human difficulty. A full run takes a long time in the cloud (eight descents of up to 500 simulated seconds each).
+
+`--map` is the tool for changing the bake: it shows the cliff cells (red), valley floors (blue), forest (green) and the planned line for every sector.
+
+## 5b. Rebuilding the world
+
+```bash
+python3 tools/build_massif.py --preview work/massif_preview.png
+```
+
+Deterministic (numpy only; Pillow for the preview). After any change: run `mountain_test -- --map`, the full `mountain_test`, `terrain_test` and `feel_test`, and capture Day and Night renders. If the change affects how times compare, give the course a new id (records file).
 
 ## 6. Visual captures (software GL is fine)
 
@@ -56,7 +72,7 @@ Each run first does camera checks, then **A: straight** (push-off, no steering; 
 xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 1600x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/visual_capture.gd
 ```
 
-Writes `work/shots/*.png`: summit, look-back, fast summit, gorge approach/side, buttress, forest, tree close-up, escarpment, broken, pinch gap, final, finish, rider close-up/carve, nitro, pause, plus `ride_carve`/`ride_nitro`/`ride_plume`/`ride_tumble` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
+Writes `work/shots/*.png`: the summit facing south/north/east/west and from above, each face (north face and cliffs, east forest, south snowfields, south-west, west ravine, north-west), a valley floor and the view back up from it, tree close-up, rider close-up, nitro, pause, plus `ride_carve`/`ride_nitro`/`ride_plume`/`ride_tumble` from a real push-off (rendering paused while simulating; the nitro shot grants charge as a labelled VISUAL FIXTURE). Pass shot names as extra args (`-- summit forest`) to render a subset.
 
 Night Mode: add `--night` to the args; every requested shot is rendered at night and saved with a `_night` suffix. Night-specific views: `sky_moon`, `sky_aurora`, `sky_up` (summit, camera tilted to the sky), `snow_close` (low camera over the glints), `slope_night`; `pause` focuses the Time of day line. Example:
 
@@ -65,6 +81,14 @@ xvfb-run -a -s "-screen 0 1600x900x24" godot --path . --windowed --resolution 16
 ```
 
 Software GL shows composition, colour and readability only; it says nothing about frame rate, and the finest glints/stars look different on a real GPU at 4K.
+
+## 6b. Rider turntable (software GL is fine)
+
+```bash
+xvfb-run -a -s "-screen 0 1200x900x24" godot --path . --windowed --resolution 1200x900 --fixed-fps 60 --rendering-driver opengl3 --script res://tests/rider_studio.gd
+```
+
+VISUAL FIXTURE: the rider's physics is switched off and its state fields are set directly, so each pose (stand, ride, tuck, toe/heel carve, brake, grab, air) is held still and shot from several sides on the real summit, plus close-ups of the head and boots (`detail`). Writes `work/studio/<pose>_<view>.png`; add `-- --night` for Night and pose names to render a subset. Use it whenever the rider model or its posing changes.
 
 ## 7. Real ride recording (video + the game's actual audio mix)
 

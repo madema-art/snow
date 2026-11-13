@@ -15,6 +15,8 @@ func _ready() -> void:
 	var rider := SnowRider.new()
 	rider.name = "Rider"
 	rider.run = run
+	rider.mountain = mountain
+	mountain.focus = rider
 	add_child(rider)
 	var camera := SnowCamera.new()
 	camera.name = "ChaseCamera"

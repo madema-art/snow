@@ -1,4 +1,81 @@
-# Current build status — development pass 6
+# Current build status — development pass 8 (the 360-degree mountain)
+
+Pass 8 rebuilds the world as a true 360-degree mountain at the owner's request: the rider starts on the summit, chooses any side with the left stick, and races to the bottom of the mountain wherever that is. It includes the pass-7 rider model (which had not been pushed yet). Developed in the cloud (software GL, no GPU, no controller, no Windows): appearance was checked in software renders only and nothing here claims real 4K/60 performance or feel.
+
+## Pass 8 changes
+
+**The world** (`tools/build_massif.py` → `world/massif_v4.bin`, `scripts/mountain.gd`; details in MOUNTAIN.md)
+- One alpine massif ~20 km across: summit ~3,730 m at the world origin, a summit ridge with two subsidiary peaks, ten meandering aretes with spurs, bowls, eroded gullies, cliff bands broken by couloirs, cornices, rollers, forests below each face's treeline, valley floors (300–1,050 m) around the whole base, surrounding ranges and a horizon ring to 48 km. Faces have their own characters (north steep and cliffy, east forested, south open snowfields, west ravines). No main course, no preferred axis, no finish gate.
+- Baked offline (deterministic numpy tool, ~40 s): ridge skeleton, aspect-dependent flanks, erosion, pit filling (no closed hollows), masks. Runtime adds cliff bands, cornice lips, rollers and relief.
+- Streaming: 640 m tiles; 8 m render+collision tiles with trees and rocks on the 3×3 around the rider (in whatever direction it travels), 32 m / 128 m merged blocks beyond, far trees to ~1.9 km, painted forest stands and a horizon ring further out. Generation on worker threads; scenery planted a frame later; collision built immediately if ever needed.
+
+**Start, finish, records** (`scripts/rider.gd`, `scripts/run_state.gd`, `scripts/pause_menu.gd`)
+- Start on the summit. Before push-off the left stick turns the board on the spot (clock stopped); push-off goes the way the board points.
+- The finish is the bottom: riding on a valley floor at least 1,500 m below the summit, on any side. No gate, banner or line; the old finish structures are gone.
+- New records files `snow_records_massif_v4[_night].json`, each entry with the side it finished on (shown dimmed in the list). The `massif_v3` and older files are untouched.
+
+**Direction-free physics and recovery**
+- Push-off, get-up heading (down the local fall line), recovery points (uphill of the impact in any direction), and "stand-up" heights (read from the collision surface) no longer assume a downhill axis. A get-up spot must have no cliff edge just below it.
+- A tumble that slides down a rock face is judged like a fall: height lost since last touching gentle ground decides whether it is fatal.
+- Standing pushes chain like skating up to 5 m/s, so nobody can be trapped on a flat.
+
+**Sky for every direction** (`scripts/atmosphere.gd`, `shaders/sky.gdshader`): sun in the south-south-west at ~32°, moon in the east-south-east, aurora owning the northern sky, the Milky Way arching south-west to north-east.
+
+## Pass 8 validation
+
+| Suite | Result |
+|---|---|
+| Import / parse | no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` (+ summit start and left-stick aiming, push-off follows the board, gravity alike in all eight directions (0.61–0.82 of g·sin slope on comparable slopes), clockwise steering in every direction, valley floors on all eight sides, a ravine halfway down never counts, no finish in the air, the finishing face is recorded, older record files still read) | **104/104** |
+| `terrain_test.gd` (render == collision, no seam loss at 40 m/s, streaming in every direction, bounded memory, streamer stays ahead at 42 m/s, rollers launch a rider) | **6/6** |
+| `mountain_test.gd` — summit camera, four straight no-input lines (none gets down cleanly: falls, stalls or a fatal fall), and a descent in **every** sector with ordinary inputs | **all 8 sectors reach the bottom**, failures=0 |
+| — N / NE / E / SE / S / SW / W / NW | 6:01 N · 5:41 NE (north valley) · 6:42 E · 6:36 SE (south) · 6:29 S (south-west) · 6:26 SW · 6:45 W · 6:11 NW (north); 8.8–10.2 km, 2.6–3.3 km down; median **6:29** |
+| `--cautious` (N, E, S, W) | all 4 finish, median **7:21** |
+| `--tricks` (S, SW, E, SE) | 3 of 4 finish (6:20–6:34); on SW a trick landing about 1 km down was fatal. 91 rewarded landings, 10.9 boards of nitro earned, 38 s of boost |
+| Render-cost probe, 3840×2160, software GL (counts only) | 157–304 draw calls, 0.42–1.21 M primitives (east forest heaviest); startup ~3.5 s on the 4-core cloud box |
+
+Bot notes, honestly: the bots plan a route over a 50 m grid of the real terrain and follow it with ordinary inputs; they are careful (brake for bends, slow in trees, steer away from drops) and land about a minute slower than the five-minute target a skilled human should hit with tucks, lines and nitro. Each sector finishes on its own side or the neighbouring one (the bots happen to use the north valley from NE and NW). Renders (software GL) inspected: the summit in four directions and from above, the north face and its cliff bands, the east forest, the south snowfields, the west ravine, a valley floor and the view back up, close trees, and at night the summit, the moon in the east-south-east, the aurora over the northern sky, the Milky Way, a moonlit slope and the nitro glow.
+
+**Known issues:** in dense forest the chase camera can sit inside a tree's canopy (canopies are not solid to the camera, as before); bot times are above five minutes; streaming work on the main thread peaked at ~16 ms in one frame in the cloud.
+
+## Not tested — needs the owner's PC
+
+1. **How the mountain feels to ride**: whether every face reads well from the summit and at speed, whether the cliff bands and couloirs are fair, whether five minutes feels right on your favourite side.
+2. **Performance at 4K/60**: far more terrain is visible than before (blocks, far trees, horizon). Draw-call counts are in the table; real frame times and streaming hitches on the RTX card are unmeasured.
+3. **Night on the new mountain** on a real GPU (the sky was recomposed for every direction).
+4. Everything still listed for passes 6 and 7 below.
+
+# Pass 7 record (history)
+
+Pass 7 rebuilds the rider model. Gameplay, physics, posing logic, sounds and the mountain are unchanged. Developed in the cloud (software GL, no GPU): the look was checked in software renders only.
+
+## Pass 7 changes
+
+**Rider model** (`scripts/rider_visual.gd`, new `scripts/rider_mesh.gd`)
+- The capsule-and-sphere mannequin is replaced by sculpted, procedurally swept garments: a fitted red jacket with a charcoal shoulder yoke, cream piping, a front zip, tall collar, hood and a long hem that still flaps at speed; a backpack with lid, compression straps, shoulder harness and an orange sternum buckle; baggy charcoal pants with reinforced knees that flare into cuffs over the boots; flexed boots with sole, toe box, laces and orange dials; curved highbacks, heel cups and padded ankle/toe straps on the bindings; gauntlet mitts with thumbs; a vented helmet with wrap goggles, an amber-to-red mirrored lens, a strap with an orange tab and a dark face mask.
+- Board: a dark two-band top-sheet graphic (still dark when uncharged, so the glow remains the only nitro signal) and a base graphic (cream bands, orange slash) visible in the air and in falls.
+- A slow breathing idle at the summit.
+- Lighter than before: 21 mesh instances, 23 surfaces, ~9.6k triangles (was 32, 34, ~19.4k).
+
+## Pass 7 validation
+
+| Suite | Result |
+|---|---|
+| Import / parse | exit 0, no errors |
+| `prototype_test.gd` | **40/40** |
+| `feel_test.gd` | **93/93** |
+| `terrain_test.gd` | **5/5** |
+| `mountain_test.gd` straight / reference | straight fatal at 1:08.7; reference **5:26.4** (identical to pass 6: the model is visual only) |
+| Cautious / tricks | **6:42.0** / **5:23.5**, 17 rewarded landings (identical to pass 6) |
+
+Renders inspected (software GL): the new `tests/rider_studio.gd` turntable (stand, ride, tuck, toe/heel carve, brake, grab, air; head and boot close-ups) by Day and Night, a before/after comparison against the pass-6 model, and in-game chase shots (summit, close, carve, nitro, plume, tumble).
+
+**Needs the owner's eyes:** how the rider reads at 4K on the real GPU, at speed, by Day and Night; whether the colours (red jacket, charcoal yoke and pants, orange accents) are right.
+
+# Pass 6 record (history)
+
+Pass 6 status as merged:
 
 Pass 6 adds two things: a **Day / Night** choice with a full Night presentation, and a **game-like launch** on Windows (Desktop shortcut with an icon, silent update, no editor). Developed in the cloud with the **official Godot 4.7.2 Linux build**. The container has **no GPU, no audio device, no controller and no Windows** (software GL, simulated input, launcher scripts run under wine with stand-in programs), so nothing here claims hardware feel, listening, real 4K/60 performance or a real-Windows launch.
 

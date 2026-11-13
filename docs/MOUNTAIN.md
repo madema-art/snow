@@ -1,51 +1,63 @@
-# The Massif — course `massif_v3` (pass 4)
+# The Massif — course `massif_v4` (the 360-degree mountain)
 
-Pass 4 reshaped the mountain itself after the first hands-on playtest ("the mountain needs a lot of work, but it's the right concept"). The hazards and regions of `massif_v2` are still where they were; what changed is everything between them. Because times are no longer comparable, records moved to `user://snow_records_massif_v3.json`; the v2 file is left untouched.
+SNOW is one real mountain. The rider starts stationary on its summit, the highest point of the world, and can go down **any** side. There is no main course, no preferred direction, no finish line and no route to follow: the run ends on whichever valley floor the rider reaches at the bottom. Times from the earlier linear courses (`massif_v2`, `massif_v3`) are not comparable, so this course has its own records; the older files stay on disk untouched.
 
-## Dimensions
+Compass: **north = -Z, east = +X, south = +Z, west = -X**. Azimuths are measured from north, clockwise.
 
-`SnowMountain.LENGTH = 9360 m`, `WIDTH = 1200 m` (X=-600..600), +Z downhill, +Y up. Spawn Z=8, finish gate Z=9180 (|X|<50). ~3.11 km net drop. Backing terrain Z=-200..9600 as 48 indexed 200 m chunks (8 m grid), render triangles == collision triangles. Beyond |X|≈520 cornices fall to real lower slopes and the surrounding ranges (SnowBackdrop, with collision). No checkpoints, invisible walls or coordinate death zones. Feature definitions use a logical distance (world Z / 1.2).
+## Scale
 
-## Shape of the mountain (new in v3)
+| | |
+|---|---|
+| Summit | ~3,730 m, at the world origin: a ~4 m top that falls away at a steady 0.42 grade in every direction, so the faces below are visible from the start |
+| Valley floors | 300–1,050 m depending on the side (south lowest, north highest) |
+| Net drop | ~2,700–3,400 m |
+| Summit to valley floor | ~9–10.5 km in a straight line on every side; real lines ~9.5–11 km |
+| Baked world | ±16 km square (1280 × 1280 height samples, 25 m apart) |
+| Horizon ring | distant ranges out to ±48 km (render only) |
 
-- **A true summit.** The rider starts 12 m below the top of a peak. The ground falls away behind the start and off both shoulders of the summit ridge (convex for the first ~1 km, blending into the broad bowl below), so the first seconds are a ridge crest with the whole valley ahead.
-- **Pitches and benches.** The grade is no longer one constant 0.34 ramp: it swings between about 0.24 and 0.44 (steep off the top), and the benches curve across the face. The average grade — and therefore the ~5 minute target — is unchanged; no speed cap, no padding.
-- **Two natural drainages** (`west_line()` / `east_line()`), banked snow gullies 5–10 m deep that wind down the whole mountain and can be carved like a natural half-pipe:
-  - On the open upper faces they pass either end of the gorge, so the terrain itself suggests the safe shoulders.
-  - Through the forest they ARE the two tree-free corridors, as creek beds.
-  - The **west** creek pours over the forest escarpment (a ~85 m icefall: fatal). The **east** creek passes the end of the escarpment safely.
-  - In the Broken Mountain the east drainage dies out among the ridges; the west shoulder continues past the second cut.
-  - Both converge into the valley floor at the finish.
-- **Rolling relief.** Seeded simplex noise adds wind drifts and moraine rollers (±2–4 m over 60–115 m), strongest in the Broken Mountain: things to pump, pop off and read.
-- **Scenery in natural patterns.** Trees follow a continuous altitude-and-clump density: nothing on the summit, wind-stunted krummholz from ~0.4 km, scattered stands through the cliffs, thickets and open glades in the forest, sparse survivors in the broken ground, timbered valley flanks. Boulders gather into gardens and moraines with a few house-sized erratics — and never touch or pinch, so there is always a rideable gap (no traps).
+A skilled descent should take about five minutes; the test bots, riding carefully with no nitro, take 5:41–6:45 depending on the side (BUILD_STATUS.md). Different faces and lines take different times, and that is part of the game.
 
-## Regions (world Z)
+## How the mountain is made
 
-| Region | Z | Personality and decisions |
-|---|---|---|
-| Summit | 0–1320 | Peak and summit ridge, steep first pitch, then the face opens. East-side wind-drift rollers (X≈70..420) for early air and first nitro; the two gullies begin either side of the ridge. |
-| Cliffs | 1320–3360 | A bench, then the transverse gorge (~100 m deep, X≈-215..215) with a dark, scoured lip. Around either end (the gullies lead there) or the narrow spur gap at X=120 — kicker at the lip, lower far rim and a steep landing. Rock gardens, outcrops on every wall, then the buttress with routes around both ends. |
-| Forest | 3360–5640 | Thickets and glades, two creek-bed corridors, softer powder, muffled wind. West creek = icefall over the escarpment near Z≈5.1 km; east creek passes it. |
-| Broken Mountain | 5640–7800 | Diagonal ridges, strongest rollers, boulder moraines, two deep offset cuts (≈6.55 and 7.56 km). The first cut pinches to a ~35 m gap at X=170 (kicker, raised far rim, landing). |
-| Final Descent | 7800–9360 | Open valley bowl between timbered flanks; the drainages merge into a broad trough; ramp at X=0 and tabletop at X=-70; pennant lines and the timber finish gate. |
+**Baked large scale** (`tools/build_massif.py` → `world/massif_v4.bin`, deterministic):
 
-## Surfaces
+1. **Ridge skeleton.** A summit ridge joins the main summit to two subsidiary peaks (north-west ~3,390 m, south-east ~3,300 m). Ten aretes run from the peaks out to the valleys, each with side spurs. The skeleton is measured in a domain-warped space, so ridges meander instead of running straight.
+2. **Flanks by aspect.** Every point takes the highest of the flanks falling away from the skeleton (a smooth maximum, so valleys get rounded bottoms). How a flank falls depends on which way it faces: north-facing slopes are short and steep, south-facing ones long and open, east and west in between. This is what gives the faces their different characters and the ridges their asymmetric profiles.
+3. **Summit dome**, valley floors that fall gently away from the base (each side at its own elevation), and the surrounding ranges beyond them. The ranges' front wanders by kilometres and foothills stand on the floors, so the valleys are not a ring.
+4. **Rock relief and stream-power erosion** (32 passes of flow accumulation, gently smoothed so gully walls stay rideable): dendritic gullies and spurs on every face.
+5. **Cliff bands**: where a face is meant to be cliffy (strongest north, north-west and west, by altitude) *and* is already steep (judged over ~100 m), the slope is gathered into rock risers (steep rock faces up to ~75 m tall, every 140 m of height) with benches between that follow the contours and keep about a third of the slope, so they ride rather than stall. Bands break into segments with wide gaps, and fade where the gullies run: those are the couloirs.
+6. **Pit filling** (priority flood from the valley floors) runs AFTER the bands: no closed hollow anywhere on the mountain, guaranteed. Filled flats (frozen tarns) keep a 0.07 grade, so a stopped rider can always glide or skate out.
+7. **Masks**: valley floor (where a descent can end), cliff (where bands were carved: rock colour, rocks), forest (below each face's treeline, thinned on steep ground and on the floors), cornices (the lee lip of high crests).
 
-`SnowMountain.surface_at()` returns (powder, ice): ice on steep, convex, exposed and wind-patched ground; powder in the forest and concave hollows (gully floors). Physics: ice -32% edge grip, slightly less resistance; powder more resistance/drag. The terrain shader, board audio and haptics use the same values.
+**Runtime detail** (`SnowMountain.height_at`, same function for rendering, collision, physics, camera, audio, tumbles and tests):
 
-## Readability and fairness
+- **Cornice lips** on the lee of high crests.
+- **Wind-drift rollers** on open, moderately steep snow (30–50 m across, up to ~3.6 m): natural kickers for a fast rider. They fade on gentle ground so they never dig pockets.
+- **Small relief** (±0.6–2.6 m).
 
-- The low sun now rakes ACROSS the fall line: every roll, bank, gully and ripple is modelled by light and long shadows instead of flat white.
-- Lips whose ground falls 5–14 m faster than the grade within 24 m are scoured dark; the camera rises when the ground ahead drops away.
-- Shortcut approaches and landings are clear of scenery; both gap jumps are proven clearable with an ordinary ollie (local fixtures).
-- Falling near an edge is dangerous on purpose: a tumble carries real momentum, and one that goes over the gorge lip, the icefall or a cut is fatal.
-- Getting stuck is designed out: A pushes off again whenever the rider is nearly stopped (kicking away from a trunk/boulder if leaning on one); get-up spots need a clear 7 m slide downhill; boulders keep rideable gaps; a rare trimesh-crease freeze self-corrects.
-- Trunk radius 0.3 x scale (collider == visible trunk); canopies are non-solid.
+## The faces
 
-## Routes
+| Side | Character |
+|---|---|
+| **North** | The steepest, iciest face: dense cliff bands under the summit ridge, narrow couloirs between them, a high glacial valley floor (~1,000 m). Fast for experts who know the line, fatal for anyone who rides straight. |
+| **North-east** | Hanging snowfields between the north and north-east aretes; broken cliff bands; a long ridge to follow. |
+| **East** | The longest, gentlest-flanked side: big forested slopes below ~2,200 m, rocks and technical tree lines, a forest river valley (~600 m). |
+| **South-east** | Rolling spurs off the south-east peak, glades and scattered stands. |
+| **South** | Broad open snowfields from the summit dome, the most rollers to launch off, the lowest and widest valley (~300–400 m). The most forgiving start. |
+| **South-west** | A big open bowl between the south and south-west aretes, meadow basins below. |
+| **West** | Deep ravines between massive ridgelines, cornices on the crests, cliff bands on the ravine walls. |
+| **North-west** | Rock spires and the long serrated north-west arete from the second peak; you can follow it, or drop into the bowls either side. |
 
-Reference broad route (tests/mountain_test.gd ROUTE): west gully past the gorge and buttress, lower forest gaps, traverse east before the escarpment, west across the broken mountain's shoulder, down the bowl. Alternatives: east gully and east gorge end; spur jump; buttress chute; east creek through the whole forest; outside escarpment line; pinch-gap shortcut; summit rollers; final tabletop. Bots only press ordinary inputs and prove traversability, not human difficulty.
+Every side has at least one way down that a careful rider can find; many straight lines do not (riding straight from the summit meets cliffs, rocks, trees or gullies on every face). `tests/mountain_test.gd -- --map` draws the cliff cells, valley floors, forest and a planned line for each of the eight sectors into `work/route_map.png`.
 
-## Collision
+## Starting, finishing
 
-Terrain trimesh == render mesh. Trees: per-chunk static bodies, `CylinderShape3D` trunks (radius 0.3 x s, height 4.8 x s). Boulders/outcrops: `ConvexPolygonShape3D` from the exact displaced vertices of the visual mesh. Backdrop: coarse trimesh under the course edge. Hazards are bucketed per 200 m for queries (`hazards_near`).
+- **Start:** the summit dome is gentle enough to roll off in any direction. Before pushing off, the left stick turns the board on the spot (the clock does not run); the right stick looks around. A (push) starts the clock and sends the board the way it points.
+- **Finish:** the descent is complete the moment the rider is **riding** (grounded, not recovering, not in the air) on a **valley floor** (the baked floor mask) at least **1,500 m below the summit**. Valley floors are low, gentle ground beyond the mountain's base on every side — never the bottom of a ravine on the flanks and never the air above a valley. The side the run finished on (North, South-west, …) is saved with the time and shown, dimmed, in the records list.
+
+## Fairness rules
+
+- No checkpoints, invisible walls, coordinate death zones or speed caps. Fatality only from real impacts and falls (drop heights, tumbling over a drop of 18 m or more, hard impacts).
+- No closed hollows on the mountain; pushes chain like skating up to 5 m/s, so nobody can be trapped on a flat.
+- Boulders never touch or pinch (there is always a rideable gap); trees and rocks are placed per tile from fixed seeds, so the forest you learned is the forest you meet.
+- The mountain never changes between attempts: learn it, find your line.

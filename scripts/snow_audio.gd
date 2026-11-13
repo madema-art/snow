@@ -318,19 +318,18 @@ func _physics_process(delta: float) -> void:
 ## shortens reverb; gorges and cliff bands open up an echo on impacts/nitro.
 func update_environment(delta: float) -> void:
 	var p := rider.global_position
-	var z := p.z / SnowMountain.DISTANCE_SCALE
-	var forest := SnowMountain.band(z, 2800, 4700, 250)
+	var forest := SnowMountain.forest_amount(p.x, p.z)
 	var h := SnowMountain.height_at(p.x, p.z)
 	var around := 0.25 * (SnowMountain.height_at(p.x - 40, p.z) + SnowMountain.height_at(p.x + 40, p.z) + SnowMountain.height_at(p.x, p.z - 40) + SnowMountain.height_at(p.x, p.z + 40))
 	var convex := clampf((h - around) / 6.0, -1.0, 1.0)
-	var altitude := clampf((h - 1200.0) / 2000.0, 0.0, 1.0)
+	var altitude := clampf((h - SnowMountain.summit.y + 2400.0) / 2000.0, 0.0, 1.0)
 	var target_exposure := clampf(0.45 + convex * 0.35 + altitude * 0.3 - forest * 0.4, 0.0, 1.0)
 	exposure = lerpf(exposure, target_exposure, 1.0 - exp(-1.2 * delta))
 	shelter = lerpf(shelter, forest, 1.0 - exp(-1.0 * delta))
 	if wind_filter:
 		wind_filter.cutoff_hz = lerpf(5000.0, 1600.0, shelter)
 	var enclosed := clampf(-convex, 0.0, 1.0)
-	var cliffs := SnowMountain.band(z, 1100, 2800, 200) + SnowMountain.band(z, 4700, 6500, 200) * 0.6
+	var cliffs := SnowMountain.cliff_amount(p.x, p.z)
 	if reverb:
 		reverb.wet = lerpf(reverb.wet, 0.05 + enclosed * 0.12 + cliffs * 0.08 - forest * 0.03, 1.0 - exp(-1.0 * delta))
 		reverb.room_size = lerpf(reverb.room_size, 0.45 + cliffs * 0.35 - forest * 0.15, 1.0 - exp(-1.0 * delta))

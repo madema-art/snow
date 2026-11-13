@@ -1,4 +1,4 @@
-# Architecture — pass 6
+# Architecture — pass 8
 
 Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/main.tscn` (one Node3D with `scripts/main.gd`). No external dependencies, plugins or downloaded assets. Everything is built at startup by small scripts (measured ~1.5–4 s generation, see BUILD_STATUS).
 
@@ -8,12 +8,13 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 |---|---|
 | scripts/main.gd | Composition root: controls, run, mountain, rider, camera, FX, audio, haptics, music, pause menu, launch title; applies the saved time of day and forwards `SnowRun.mode_changed` to the atmosphere |
 | scripts/snow_tuning.gd | **All feel constants**: gravity/drag, carve, brake/tuck, surfaces, ollie/air, landing, trick rewards and fatigue, nitro, crash thresholds/recovery, camera |
-| scripts/mountain.gd | `SnowMountain`: analytic course (`height_at`, `normal_at`, `surface_at`, `region`), indexed 200 m render+collision chunks with per-vertex surface/lip/AO data, seeded trees/boulders/outcrops in per-chunk MultiMeshes + per-chunk static bodies, hazard buckets + `hazards_near()`, finish area |
+| scripts/mountain.gd | `SnowMountain`: the 360-degree world. Static sampling of the baked massif + runtime detail (`height_at`, `normal_at`, `surface_at`, masks, `at_bottom`, `face_name`, `spawn_point`), tile streaming (L0 render+collision tiles with seeded trees/boulders/outcrops, merged L1/L2 blocks, far trees, horizon ring) on worker threads, hazard buckets + `hazards_near()` |
+| tools/build_massif.py, world/massif_v4.bin | Offline bake of the mountain (heights + masks) and its output |
 | scripts/scenery_meshes.gd | `SnowMeshes`: tiered snow-loaded conifers (+ far LOD), faceted boulders whose vertices are also their convex colliders |
 | scripts/atmosphere.gd | `SnowAtmosphere`: the Day and Night looks (`MODES`, `SKY_NIGHT`) and the cross-fade between them: sky shader, sky ambient, ACES exposure, fog/aerial perspective, glow, one directional light (sun by day, moon by night) with 4-split shadows; static `night_amount` / `fx_tint` for everything else |
-| scripts/backdrop.gd | `SnowBackdrop`: surrounding ranges/valleys (ridged noise, 150x200 m cells) with coarse collision below the course edge |
 | scripts/rider.gd | `SnowRider`: CharacterBody physics, carving, surfaces, ollie/coyote, air tricks, landing evaluation, trick rewards/fatigue, nitro, hazards/impacts, crash + visual tumble, get-up, finish coast; emits `sound_event(kind, strength)` |
-| scripts/rider_visual.gd | `SnowRiderVisual`: procedural board (sidecut, camber, kick, thickness, glow top sheet), bindings, boots, layered clothing, helmet/goggles; per-frame two-bone IK legs/arms; carve inclination, crouch spring, tuck, preload/pop, grabs, spin/flip poses, flail/lie/get-up; board glow |
+| scripts/rider_visual.gd | `SnowRiderVisual`: the rider model and its posing. Board (sidecut, camber, kick, thickness, glowing top sheet with a dark two-band graphic, base graphic), curved highbacks and strapped bindings, flexed boots, baggy pants flaring over the boots with reinforced knees, fitted jacket (shoulder yoke, piping, zip, tall collar, hood, long hem that flaps in the wind), backpack with harness, gauntlet mitts, vented helmet with wrap goggles, mirrored lens and face mask. All colours are vertex colours from the palette constants at the top of the file. Per-frame two-bone IK legs/arms; carve inclination, crouch spring, tuck, preload/pop, grabs, spin/flip poses, flail/lie/get-up, summit breathing; board glow |
+| scripts/rider_mesh.gd | `SnowRiderMesh`: the small mesh builder behind the rider: tubes swept along a path with elliptical or rounded-box cross-sections, end caps, per-vertex colour callbacks, `cut()` to add rings at colour edges, smooth normals; several sweeps per mesh so each garment is one draw call |
 | scripts/chase_camera.gd | `SnowCamera`: travel-relative free look, analog rate smoothing, idle settle/recenter, speed framing/FOV, drop anticipation, sprung anchor, landing nod, asymmetric sphere collision |
 | scripts/snow_fx.gd | `SnowFX`: edge spray, deep-lean plume (core arc, hanging mist, sun glitter), landing bursts, fall dispersion (pooled impact bursts and clods thrown along the body's momentum, ploughed tumble trail), nitro embers, bough snow, persistent board tracks (ribbon segments) |
 | scripts/snow_audio.gd | `SnowAudio`: bus graph, 10 surface/wind/nitro loops mixed from rider state, 12-voice one-shot pool with stealing, 4 positional voices (tree pass-bys, boughs), environment (exposure, forest shelter, cliff reverb) |
@@ -23,7 +24,7 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 | scripts/run_state.gd | `SnowRun`: ready/running/finished/ended, clock, time of day (`mode`, `set_mode`, `can_change_mode`, `mode_changed`, saved in `user://snow_settings.json`), one top ten per mode, last rank |
 | scripts/pause_menu.gd | `SnowPauseMenu`: the only UI; pause/results, Time of day selector (disabled while a run is timed), leaderboard of the selected mode, remapping, delayed results after finish/fatal, auto-pause on disconnect/focus loss |
 | scripts/title.gd | `SnowTitle`: the wordmark that fades over the summit at launch; never blocks input, leaves on push-off or pause |
-| shaders/*.gdshader | terrain, tree, rock, backdrop, sky, board track, pause frost; `noise.gdshaderinc` shared noise |
+| shaders/*.gdshader | terrain (incl. distant forest stands), tree, rock, backdrop (horizon ring), sky, board track, pause frost; `noise.gdshaderinc` shared noise |
 | audio/*.wav | Original synthesized sounds generated by `tools/synth_audio.py` |
 | tests/*.gd | See QA.md |
 | launcher/, Play-Snow.bat | Windows launch: hidden updater, headless import, runtime start, shortcut creation, repair (see launcher/README.md) |
@@ -32,15 +33,23 @@ Godot 4.7.2, GDScript, Compatibility (OpenGL 3.3) renderer, main scene `scenes/m
 | tools/render_branding.js, tools/make_icon.py | Rebuild PNGs from the SVGs (Playwright) and pack the ICO (Pillow) |
 | tests/launcher/ | Wine harness with stand-in `git`/`where`/Godot executables for the launcher scripts |
 
-## Coordinates and course
+## Coordinates and world
 
-+Z downhill, +Y up, X across (-600..600). With the default camera looking downhill, screen-right is world -X, so positive steer reduces heading. Logical distance = world Z / `DISTANCE_SCALE` (1.2) for feature definitions. Spawn Z=8, finish Z=9180 (|X|<50, grounded, not recovering). Terrain backing Z=-200..9600 in 48 chunks of 150x25 cells (8 m), ~360k triangles; render triangles == collision triangles. See MOUNTAIN.md.
++Y up; north = -Z, east = +X, south = +Z, west = -X. The summit is at the origin (`SnowMountain.summit`, spawn `spawn_point()`). Board heading 0 points south (+Z); `forward() = (sin h, 0, cos h)`; positive steer turns the board clockwise seen from above in every direction of travel. Nothing in physics, camera, audio or tests depends on a world axis.
 
-Per-vertex COLOR on terrain: r = powder, g = ice (both from `surface_from`, the same function physics uses), b = rock/lip scour (slope + drop-ahead/side-drop detection), a = AO (pooled around trunks/boulders and in concavities).
+## Terrain (massif_v4)
 
-## Terrain function (massif_v3)
+**Bake** (`tools/build_massif.py`, numpy, deterministic, ~40 s) writes `world/massif_v4.bin`: header (`SNOWMAP1`, sizes, extent ±16 km, height offset/scale, summit) + 1280² uint16 heights (25 m apart) + four 640² uint8 masks (valley floor, cliff, forest, cornice), zlib-compressed (Godot reads it with `decompress(..., COMPRESSION_DEFLATE)`). Steps: ridge skeleton with domain warp → aspect-dependent flanks (smooth max) → summit top (0.42 grade all round; the runtime adds a sharper ~4 m top the 25 m bake cannot hold), valley floors, surrounding ranges, foothills → relief → 32 passes of stream-power erosion → cliff bands (terracing gated by face, altitude, broad slope and gap noise) → priority-flood pit filling from the valley floors (0.07 drain grade; guarantees no closed hollow, including any a band could make) → masks. `--preview path.png` writes a shaded map. See MOUNTAIN.md.
 
-`SnowMountain.height_at(x, distance)` is the single source of truth (rendering, collision, physics surfaces, camera anticipation, audio exposure, tumbles). Layers: base grade 0.34; summit peak (ground falls behind the start, convex shoulders for the first km, then the 0.00019 x² bowl); pitch/bench waves (grade ≈0.24–0.44); a static seeded `FastNoiseLite` relief; two drainage gullies along `west_line()`/`east_line()` (also the forest corridors); then the hand-built hazards and jumps (gorge + spur gap with lowered far rim, buttress, escarpment, broken ridges, two cuts + pinch gap, ramps, rollers, tabletop) and perimeter cornices. Scenery uses `tree_density()`/`rock_density()` (altitude x clump noise) and boulders keep a rideable gap from every other hazard.
+**`SnowMountain.height_at(x, z)`** (static, thread-safe, ~5 µs) = bicubic macro (which already holds the cliff bands) + cornice lips + rollers (fade below a 0.2-0.4 grade) + small relief. Runtime detail must never be able to dig a closed hollow: anything that could (bands, deep features) belongs in the bake, before the pit fill. `normal_at`, `surface_at/surface_from` (powder/ice from slope, curvature, forest mask, patches), `tree_density`, `rock_density`, `valley_floor`, `at_bottom`, `face_name`, `region`, `forest_amount`, `cliff_amount`, `spawn_point` are all static.
+
+**Streaming** (`SnowMountain` node): the ±16 km square is 50×50 tiles of 640 m, grouped in 10×10 blocks of 3.2 km.
+- L0: 8 m grid (81² vertices + border for normals/curvature/lips), render == collision triangles (`ConcavePolygonShape3D`), skirts, per-vertex surface data and AO baked from the tile's hazards; trees (cylinder colliders) and rocks (convex hulls of their exact vertices) per tile from a fixed per-tile seed, never within 6 m of a tile edge (order-independent). The 3×3 tiles around the rider's position led by 2.5 s of velocity — in whatever direction it travels; unloaded at 3 tiles (after the block has its terrain back).
+- L1 (32 m) within 3.6 km and L2 (128 m) elsewhere: each block is ONE mesh merged from its tiles' pieces, with holes where L0 tiles are shown. Pieces are cached per block.
+- Trees are batched per 320 m quarter-tile (Godot picks level of detail per batch by its centre): near meshes (4 variants, shadows) to 420 m from the batch centre, one shared simple far mesh beyond. Far trees (no colliders) on tiles within ~1.5 km; beyond that the terrain shader paints dark stands from UV.x (forest density) from ~0.9 km out. A coarse horizon ring (2 km grid to ±48 km, backdrop shader) closes the world.
+- All generation runs on `WorkerThreadPool` (at most 6 tasks); the main thread applies results within a 4 ms budget and plants one tile's scenery per frame. `prepare(p)` builds everything around a point synchronously (startup ~2 s on the 4-core cloud box, restarts are instant), `ensure_ready(p)` builds missing collision immediately (teleports, fixtures, or a rider outrunning the streamer). `stream_stats` counts builds, synchronous builds and the longest main-thread apply.
+
+**Finish**: `SnowRider` calls `run.finish(face)` when the run is running, the board is on the floor, not recovering and not airborne, and `SnowMountain.at_bottom(position)` (floor mask > 0.5 and at least `FINISH_DROP` below the summit).
 
 ## Physics (60 Hz)
 
@@ -73,6 +82,10 @@ Deep lean: `plume` (0..1, from edge engagement x speed) and `plume_side` drive F
 ## Rendering
 
 Compatibility renderer, 2x MSAA, ACES tonemap, glow, fog with scatter and aerial perspective, sky shader also providing ambient. One DirectionalLight with 4 PSSM splits to 260 m. Trees: 4 variants x near (≤420 m, shadows) + far LOD (420–2600 m, no shadows) MultiMeshes per chunk; rocks/outcrops 4 variants ≤1600 m. Compatibility multiplies vertex COLOR by the MultiMesh instance colour, so MultiMeshes set white instance colours. Board tracks: alpha ribbons, distance-faded, last ~70 segments kept. Particles: CPUParticles3D (no emission-ratio support), density expressed through opacity/size.
+
+## Rider model
+
+Every garment is authored in the frame it is posed in, so posing only sets transforms: torso, hem: spine frame (origin pelvis, +Y up the spine, front -X, +Z toward the nose-side shoulder); limbs: origin at the upper joint, +Y along the bone, +X toward the limb's front (knee cap, inside of the elbow), placed by `place_bone()`; head: origin at the head centre, front -X; boots and bindings: per-foot frame on the board, toe -X. Segment lengths equal the IK bone lengths (THIGH, SHIN, UPPER_ARM, FOREARM), so nothing stretches. Joints are hidden by overlapping rounded ends rather than skinning. The whole rider is 21 mesh instances / 23 surfaces / ~9.6k triangles (the pass-6 capsule rider was 32 / 34 / ~19.4k). Colours live in the palette constants; the red jacket is the rider's identity and must stay readable against snow by day and moonlit slopes at night (all rider materials keep the soft rim). `tests/rider_studio.gd` renders a labelled turntable of poses and close-ups for checking changes.
 
 ## Day / Night
 
@@ -109,7 +122,7 @@ See AUDIO_DESIGN.md. Bus graph: Master (hard limiter -0.8 dB) ← SFX (glue comp
 
 ## Saves and UI
 
-`SnowRun` keeps one course-specific top ten per time of day (Day `user://snow_records_massif_v3.json`, Night `user://snow_records_massif_v3_night.json`), sorted, clamped to ten, malformed entries filtered, and the selected mode in `user://snow_settings.json`. `SnowControls` persists `user://snow_controls_v2.json` (exactly the 15 remappable actions, unique, validated; v1 migration). Pause menu UI is authored for the 3840x2160 canvas (stretch mode canvas_items).
+`SnowRun` keeps one course-specific top ten per time of day (Day `user://snow_records_massif_v4.json`, Night `user://snow_records_massif_v4_night.json`; entries `{time, face}`, plain numbers from older files still read), sorted, clamped to ten, malformed entries filtered, and the selected mode in `user://snow_settings.json`. `SnowControls` persists `user://snow_controls_v2.json` (exactly the 15 remappable actions, unique, validated; v1 migration). Pause menu UI is authored for the 3840x2160 canvas (stretch mode canvas_items).
 
 ## Performance notes
 

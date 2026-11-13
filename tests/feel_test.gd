@@ -134,7 +134,8 @@ func go() -> void:
 
 	# --- Crash: tumble is presentation only ---------------------------------
 	menu.restart()
-	await press_and_run(120)
+	await place_on_slope(16.0)
+	await frames(20)
 	var body_at := rider.position
 	rider.nitro = 0.8
 	var speed_before := rider.speed
@@ -219,7 +220,7 @@ func go() -> void:
 	await frames(4)
 	check(stop_speed < 1.0 and rider.speed > 2.0 and rider.air_time < 0.3, "A pushes off again from a near standstill (no one stays stuck)")
 	var fresh_run := SnowRun.new()
-	check(fresh_run.records_path.ends_with("snow_records_massif_v3.json") and SnowMountain.COURSE_ID == "massif_v3", "reshaped mountain keeps its own records file")
+	check(fresh_run.records_path.ends_with("snow_records_massif_v4.json") and SnowMountain.COURSE_ID == "massif_v4", "the 360-degree mountain keeps its own records file (older files untouched)")
 	fresh_run.free()
 	check(is_equal_approx(SnowMusic.track_gain_db("x/Heavier Half-time Beat Cover.mp3"), 4.0) and SnowMusic.track_gain_db("x/Alpine Shift (Take 2) (Remix).mp3") < -1.5 and SnowMusic.track_gain_db("x/Some New Song.mp3") == 0.0, "songs are level-matched; unknown songs play at the default level")
 	var loudest_bed := 0.0
@@ -246,30 +247,32 @@ func go() -> void:
 	audio.voice_cooldown = 0.0
 	rider.sound_event.emit("tumble", 0.6)
 	check(audio.voice.playing and audio.voice.stream != audio.streams["grunt_hit_1"], "rolling impacts add their own grunts")
-	# A tumble that goes over a real drop is fatal (FIXTURE: placed above the gorge lip).
+	# A tumble that goes over a real drop is fatal (FIXTURE: placed above a cliff lip).
 	menu.restart()
 	run.push_off()
-	var lip_z := 1452.0 * SnowMountain.DISTANCE_SCALE
-	rider.position = Vector3(0, SnowMountain.height_at(0, lip_z) + 0.72, lip_z)
-	rider.velocity = Vector3(0, -8, 26)
+	var drop: Array = find_drop()
+	var lip: Vector3 = drop[0]
+	var dir: Vector3 = drop[1]
+	var before_lip := lip - dir * 12.0
+	rider.position = Vector3(before_lip.x, SnowMountain.height_at(before_lip.x, before_lip.z) + 0.72, before_lip.z)
+	rider.mountain.prepare(rider.position)
+	rider.heading = atan2(dir.x, dir.z)
+	rider.velocity = dir * 26.0 + Vector3(0, -8, 0)
 	await frames(2)
 	rider.crash(10.0)
-	check(run.state == "running", "a fall near the gorge starts as an ordinary fall")
+	check(run.state == "running", "a fall near a cliff starts as an ordinary fall")
 	await frames(420)
-	check(run.state == "ended" and rider.last_crash_reason == "tumbled off a drop", "tumbling over the gorge lip is a fatal fall, by physics not by zone")
+	print("CLIFF FIXTURE lip=", lip, " dir=", dir, " drop25=", lip.y - SnowMountain.height_at(lip.x + dir.x * 25.0, lip.z + dir.z * 25.0), " state=", run.state, " reason=", rider.last_crash_reason, " body=", rider.tumble_pos)
+	check(run.state == "ended" and rider.last_crash_reason == "tumbled off a drop", "tumbling over a cliff lip is a fatal fall, by physics not by zone")
 
 	# --- Pass 5: deep lean, plume and over-lean --------------------------------
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 28) # FIXTURE: at speed on the summit face
+	await place_on_slope(28.0)          # FIXTURE: at speed on an open face
 	await frames(2)
 	Input.action_press("steer_right", 0.75)
 	await frames(150)
 	check(rider.recovery == 0.0 and rider.over_lean == 0.0 and rider.plume > 0.5 and rider.plume_side > 0.0, "a committed carve throws a plume and never tips the rider (plume %.2f)" % rider.plume)
 	Input.action_release("steer_right")
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 30)
+	await place_on_slope(30.0)
 	await frames(2)
 	Input.action_press("steer_left", 1.0)
 	var lock_frames := 0
@@ -284,9 +287,7 @@ func go() -> void:
 	check(rider.recovery > 0.0 and rider.last_crash_reason == "over-lean" and lock_frames > 60 and lock_frames < 240, "leaning too far for too long washes the edge out into a tumble (after %.2f s)" % (lock_frames / 60.0))
 	check(max_plume > 0.8 and warned, "full lean throws the biggest plume and builds a warning first")
 	check(rider.nitro == 0.0 and rider.velocity == Vector3.ZERO, "an over-lean fall wipes speed and nitro like any other fall")
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 30)
+	await place_on_slope(30.0)
 	await frames(2)
 	Input.action_press("steer_left", 1.0)
 	Input.action_press("brake", 1.0)
@@ -505,6 +506,138 @@ func go() -> void:
 	for name in test_copies:
 		DirAccess.remove_absolute("user://test_music/" + name)
 	DirAccess.remove_absolute("user://test_music/")
+	# --- Pass 7: the 360-degree mountain -----------------------------------------
+	var mountain: SnowMountain = game.get_node("Mountain")
+	menu.restart()
+	await frames(2)
+	var top := SnowMountain.spawn_point()
+	var highest := true
+	for k in 24:
+		var a := TAU * k / 24.0
+		for r in [40.0, 150.0, 400.0]:
+			if SnowMountain.height_at(top.x + sin(a) * r, top.z + cos(a) * r) > top.y + 0.01:
+				highest = false
+	check(highest and rider.position.distance_to(top) < 1.5 and run.state == "ready", "every run starts stationary on the summit, the highest point around")
+	var h0 := rider.heading
+	Input.action_press("steer_right", 0.9)
+	await frames(40)
+	Input.action_release("steer_right")
+	await frames(10)
+	check(rider.heading < h0 - 0.4 and run.elapsed == 0.0 and run.state == "ready" and rider.velocity == Vector3.ZERO, "the left stick turns the board on the summit; the clock does not start")
+	var aimed := rider.forward()
+	Input.action_press("jump")
+	await frames(2)
+	Input.action_release("jump")
+	await frames(20)
+	var flat_v := Vector3(rider.velocity.x, 0, rider.velocity.z).normalized()
+	check(run.state == "running" and flat_v.dot(aimed) > 0.8, "push-off sends the board the way it was aimed")
+	# Physics has no favourite axis: on comparable slopes in all eight directions
+	# gravity accelerates the board alike, and right steering turns it clockwise.
+	var gains: Array = []
+	var clockwise := 0
+	for k in 8:
+		var az := TAU * k / 8.0
+		var ray := Vector3(sin(az), 0, -cos(az))
+		var spot := Vector3.INF
+		for d in range(600, 6000, 40):
+			var q := top + ray * d
+			var n := SnowMountain.normal_at(q.x, q.z)
+			var grade := Vector2(n.x, n.z).length() / n.y
+			if grade > 0.28 and grade < 0.42 and SnowMountain.forest_amount(q.x, q.z) < 0.1 and SnowMountain.cliff_amount(q.x, q.z) < 0.05 and mountain.hazards_near(q, 1.0).is_empty():
+				spot = Vector3(q.x, SnowMountain.height_at(q.x, q.z), q.z)
+				break
+		if spot == Vector3.INF:
+			continue
+		menu.restart()
+		run.push_off()
+		mountain.prepare(spot)
+		rider.position = Vector3(spot.x, rider.ground_y(spot.x, spot.z) + 0.72, spot.z)
+		rider.launch_height = rider.position.y
+		var fall := SnowRider.fall_dir(spot)
+		rider.heading = atan2(fall.x, fall.z)
+		rider.velocity = fall * 8.0                       # FIXTURE: a rolling start down the fall line
+		await frames(3)
+		var n0 := SnowMountain.normal_at(rider.position.x, rider.position.z)
+		var expected := 20.0 * Vector2(n0.x, n0.z).length()   # g * sin(slope)
+		var v0 := rider.speed
+		await frames(45)
+		if rider.recovery > 0.0 or not rider.is_on_floor():
+			print("DIRECTION %d skipped: fell or airborne" % k)
+			continue
+		var gain := ((rider.speed - v0) / 0.75) / expected
+		var hd := rider.heading
+		Input.action_press("steer_right", 0.7)
+		await frames(20)
+		Input.action_release("steer_right")
+		if rider.recovery > 0.0:
+			continue
+		gains.append(gain)
+		if rider.heading < hd - 0.05:
+			clockwise += 1
+	gains.sort()
+	print("DIRECTION GAINS ", gains)
+	check(gains.size() >= 6 and gains[0] > 0.45 and gains[gains.size() - 1] < 1.15 and gains[gains.size() - 1] / maxf(gains[0], 0.01) < 1.8, "gravity accelerates the board alike in every compass direction (%d directions)" % gains.size())
+	check(clockwise == gains.size(), "right steering turns the board clockwise whatever way it travels")
+	# The finish is the bottom of the mountain, on any side, by geography.
+	check(not SnowMountain.at_bottom(top), "the summit is not the bottom")
+	var floors := 0
+	var mid_ok := true
+	for k in 8:
+		var az := TAU * k / 8.0
+		var ray := Vector3(sin(az), 0, -cos(az))
+		for d in range(2000, 14000, 50):
+			var q := top + ray * d
+			q.y = SnowMountain.height_at(q.x, q.z)
+			if SnowMountain.at_bottom(q):
+				floors += 1
+				break
+		# The lowest ground on a ring 4 km out (ravine and gully floors) is not the bottom.
+		var low := Vector3(0, INF, 0)
+		for j in 90:
+			var a := az + j * (PI / 4.0) / 90.0
+			var q := top + Vector3(sin(a), 0, -cos(a)) * 4000.0
+			q.y = SnowMountain.height_at(q.x, q.z)
+			if q.y < low.y:
+				low = q
+		if SnowMountain.at_bottom(low):
+			mid_ok = false
+	check(floors == 8, "valley floors to finish on lie on all eight sides of the mountain")
+	check(mid_ok, "the floor of a ravine halfway down never counts as the bottom")
+	# Over the valley, but in the air: no finish until the board is down and riding.
+	var valley := Vector3.INF
+	for d in range(6000, 14000, 50):
+		var q := top + Vector3(0, 0, 1) * d
+		q.y = SnowMountain.height_at(q.x, q.z)
+		var q2 := q + Vector3(0, 0, 60)
+		if SnowMountain.at_bottom(q) and SnowMountain.at_bottom(q2) and SnowMountain.normal_at(q.x, q.z).y > 0.97 and SnowMountain.normal_at(q2.x, q2.z).y > 0.97 and SnowMountain.tree_density(q2.x, q2.z) < 0.05:
+			mountain.prepare(q2)
+			if mountain.hazards_near(q2, 40.0).is_empty():
+				valley = q2
+				break
+	menu.restart()
+	run.push_off()
+	run.records_path = "user://test_feel_records.json"
+	mountain.prepare(valley)
+	rider.position = Vector3(valley.x, rider.ground_y(valley.x, valley.z) + 6.0, valley.z)
+	rider.launch_height = rider.position.y
+	rider.velocity = Vector3(0, 0, 12)                    # FIXTURE: dropping in over the floor
+	var finished_airborne := false
+	for i in 120:
+		await frames(1)
+		if run.state == "finished" and not rider.is_on_floor():
+			finished_airborne = true
+		if run.state != "running":
+			break
+	print("VALLEY FIXTURE at=", valley, " state=", run.state, " reason=", rider.last_crash_reason, " p=", rider.position, " floor=", rider.is_on_floor())
+	check(not finished_airborne and run.state == "finished", "the descent ends only once the board is down on the valley floor, not in the air above it")
+	var face_ok: bool = run.last_rank >= 0 and run.record_faces.size() == run.records.size() and run.record_faces[run.last_rank] == SnowMountain.face_name(rider.position.x, rider.position.z)
+	check(face_ok, "the record keeps which side of the mountain the run finished on (%s)" % (run.record_faces[run.last_rank] if face_ok else "-"))
+	var legacy := FileAccess.open("user://test_feel_legacy_records.json", FileAccess.WRITE)
+	legacy.store_string("[300.5, 250.25]")
+	legacy.close()
+	check(run.read_records("user://test_feel_legacy_records.json") == [250.25, 300.5], "older plain-number record files still read correctly")
+	DirAccess.remove_absolute("user://test_feel_legacy_records.json")
+	menu.restart()
 	for a in ["boost", "steer_left", "steer_right", "jump"]:
 		Input.action_release(a)
 	paused = false
@@ -518,9 +651,7 @@ func go() -> void:
 
 ## FIXTURE: ride off the summit, set a downhill speed, fall, and measure the tumble.
 func tumble_fixture(ride_speed: float, severity: float) -> Dictionary:
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -ride_speed * 0.3, ride_speed)
+	await place_on_slope(ride_speed)
 	await frames(2)
 	events.clear()
 	rider.nitro = 0.6
@@ -548,3 +679,61 @@ func press_and_run(count: int) -> void:
 		await frames(2)
 		Input.action_release("jump")
 	await frames(count)
+
+## FIXTURE helper: the first real cliff (a 30 m+ drop within 25 m, from gentle
+## snow) going down the north side from the summit: [lip point, direction].
+func find_drop() -> Array:
+	var top := SnowMountain.spawn_point()
+	for az_deg in [0, 20, 340, 40, 320, 60, 300, 90, 270]:
+		var a := deg_to_rad(az_deg)
+		var dir := Vector3(sin(a), 0, -cos(a))
+		for d in range(150, 5000, 4):
+			var p := top + dir * d
+			var h0 := SnowMountain.height_at(p.x, p.z)
+			var q := p + dir * 25.0
+			if h0 - SnowMountain.height_at(q.x, q.z) > 30.0 and SnowMountain.normal_at(p.x - dir.x * 12.0, p.z - dir.z * 12.0).y > 0.8:
+				return [Vector3(p.x, h0, p.z), dir]
+	return [top, Vector3(0, 0, 1)]
+
+## FIXTURE helper: an open, clear stretch of the south face (grade 0.3-0.4,
+## no trees, rocks or cliffs nearby) -> [point, downhill direction].
+var _slope_spot: Array = []
+func slope_spot() -> Array:
+	if not _slope_spot.is_empty():
+		return _slope_spot
+	var top := SnowMountain.spawn_point()
+	var mountain: SnowMountain = game.get_node("Mountain")
+	for d in range(500, 4000, 25):
+		var q := top + Vector3(0, 0, 1) * d
+		var n := SnowMountain.normal_at(q.x, q.z)
+		var grade := Vector2(n.x, n.z).length() / n.y
+		if grade < 0.3 or grade > 0.4 or SnowMountain.forest_amount(q.x, q.z) > 0.05 or SnowMountain.cliff_amount(q.x, q.z) > 0.05:
+			continue
+		mountain.prepare(q)
+		var fall := SnowRider.fall_dir(q)
+		var clear := true
+		for k in 8:
+			var ahead := q + fall * (k * 15.0)
+			if not mountain.hazards_near(ahead, 14.0).is_empty() or SnowMountain.cliff_amount(ahead.x, ahead.z) > 0.05:
+				clear = false
+		if clear:
+			_slope_spot = [Vector3(q.x, SnowMountain.height_at(q.x, q.z), q.z), fall]
+			return _slope_spot
+	_slope_spot = [top, Vector3(0, 0, 1)]
+	return _slope_spot
+
+## FIXTURE: a running descent placed on that stretch, moving down the fall line.
+func place_on_slope(speed: float) -> void:
+	menu.restart()
+	run.push_off()
+	var spot := slope_spot()
+	var p: Vector3 = spot[0]
+	var fall: Vector3 = spot[1]
+	var mountain: SnowMountain = game.get_node("Mountain")
+	mountain.prepare(p)
+	rider.position = Vector3(p.x, rider.ground_y(p.x, p.z) + 0.72, p.z)
+	rider.launch_height = rider.position.y
+	rider.heading = atan2(fall.x, fall.z)
+	var n := SnowMountain.normal_at(p.x, p.z)
+	rider.velocity = (fall - Vector3.UP * (Vector2(n.x, n.z).length() / n.y)).normalized() * speed
+	await frames(1)
