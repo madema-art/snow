@@ -396,7 +396,8 @@ static func offset_of(a: float, b: float) -> float:
 ## Ollie + spin/grab on open, straight snow; spend nitro on clear terrain.
 func drive_tricks(open_ahead: bool) -> void:
 	trick_cooldown -= 1
-	var open := SnowMountain.forest_amount(rider.position.x, rider.position.z) < 0.15 and SnowMountain.cliff_amount(rider.position.x, rider.position.z) < 0.2
+	var from_top := Vector2(rider.position.x - SnowMountain.summit.x, rider.position.z - SnowMountain.summit.z).length()
+	var open := from_top > 600.0 and SnowMountain.forest_amount(rider.position.x, rider.position.z) < 0.15 and SnowMountain.cliff_amount(rider.position.x, rider.position.z) < 0.2
 	match trick_phase:
 		"":
 			Input.action_release("spin_right")
@@ -441,6 +442,13 @@ func descend(name: String, azimuth_deg: float) -> Dictionary:
 	route = plan(rider.position + Vector3(sin(deg_to_rad(azimuth_deg)), 0, -cos(deg_to_rad(azimuth_deg))) * 220.0, azimuth_deg)
 	route.insert(0, Vector2(top.x, top.z))
 	route_index = 0
+	# Fresh bot state for every descent (nothing carries over from the last one).
+	stall_frames = 0
+	stall_exit = Vector2.ZERO
+	replan_cooldown = 0
+	obstacles.clear()
+	obstacle_timer = 0
+	trick_phase = ""
 	if route.size() < 3:
 		check(false, "%s: a route to the valley exists" % name)
 		return {}
@@ -471,6 +479,8 @@ func descend(name: String, azimuth_deg: float) -> Dictionary:
 			var travel := Vector3(rider.velocity.x, 0, rider.velocity.z).normalized()
 			if Vector2(view.x, view.z).normalized().dot(Vector2(travel.x, travel.z)) > 0.8:
 				camera_aligned += 1
+		if OS.has_environment("SNOW_TRACE") and i % 60 == 0 and i < 3600:
+			print("  TRACE %s t=%.0f p=%s v=%s heading=%.2f route_i=%d/%d target_speed? speed=%.1f stall=%d" % [name, run.elapsed, rider.position, rider.velocity, rider.heading, route_index, route.size(), rider.speed, stall_frames])
 		if i % 3600 == 0:
 			print("  %s t=%.0f p=%s speed=%.1f h=%.0f recovery=%.1f l0=%d" % [name, run.elapsed, rider.position, rider.speed, rider.position.y, rider.recovery, mountain.l0.size()])
 		if run.state != "running":

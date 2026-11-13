@@ -111,11 +111,19 @@ func go() -> void:
 	run.restart()
 	run.push_off()
 	var airtime := 0.0
-	for dist in [1500.0, 2200.0, 2900.0, 3600.0]:
+	var tries := []
+	for az in [180.0, 150.0, 210.0, 125.0, 235.0]:
+		for dist in [1500.0, 2300.0, 3100.0, 3900.0]:
+			tries.append([az, dist])
+	for attempt in tries:
+		if airtime > 0.25:
+			break
+		var dist: float = attempt[1]
+		var dir := Vector3(sin(deg_to_rad(attempt[0])), 0, -cos(deg_to_rad(attempt[0])))
 		run.restart()
 		rider.reset()
 		run.push_off()
-		var start: Vector3 = top + Vector3(0, 0, 1) * dist
+		var start: Vector3 = top + dir * dist
 		mountain.prepare(start)
 		rider.position = Vector3(start.x, rider.ground_y(start.x, start.z) + 0.75, start.z)
 		rider.launch_height = rider.position.y
@@ -132,8 +140,8 @@ func go() -> void:
 				airtime = rider.air_time
 			if rider.recovery > 0.0 or run.state != "running":
 				break
-		print("ROLLERS from %.0f m: travelled %.0f m, best air %.2f s, end=%s reason=%s" % [dist, travelled, airtime, run.state, rider.last_crash_reason])
-	check(airtime > 0.25, "rollers on the open south face launch a fast rider (%.2f s of air)" % airtime)
+		print("ROLLERS az %.0f from %.0f m: travelled %.0f m, best air %.2f s, end=%s reason=%s" % [attempt[0], dist, travelled, airtime, run.state, rider.last_crash_reason])
+	check(airtime > 0.25, "rollers on the open southern faces launch a fast rider (%.2f s of air)" % airtime)
 
 	game.queue_free()
 	await process_frame

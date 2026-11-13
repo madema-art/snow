@@ -9,7 +9,8 @@ extends Node3D
 ## depth fog sells kilometres of scale.
 ## NIGHT: the moon in the east-south-east is the one real light (the same
 ## direction as its disc), the aurora owns the northern sky, the Milky Way arches
-## from the south-west to the north-east, and stars fill everything. Exposure is
+## from the south-west to the north-east, and stars fill everything (the sky
+## shader's `aurora_dir` turns the curtains themselves, not just their glow). Exposure is
 ## raised so moonlit snow reads silver-blue and hazards stay readable at speed:
 ## visibility comes from moonlight, sky light and the snow's own response, never
 ## from a spotlight on the rider.

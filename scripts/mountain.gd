@@ -56,6 +56,7 @@ static var mask_ratio := 2.0
 static var heights := PackedByteArray()
 static var masks := PackedByteArray()
 static var summit := Vector3.ZERO
+static var apex := Vector2.ZERO        # summit tip, on the 8 m grid
 static var _spawn := Vector3.INF
 static var _relief: FastNoiseLite = _make_noise(4117, 1.0 / 115.0, 2)
 static var _drift: FastNoiseLite = _make_noise(5521, 1.0 / 95.0, 1)
@@ -96,6 +97,7 @@ static func load_world() -> void:
 	mask_ratio = float(map_n) / mask_n
 	heights = raw.slice(40, 40 + map_n * map_n * 2)
 	masks = raw.slice(40 + map_n * map_n * 2)
+	apex = Vector2(snappedf(summit.x + extent, STEP) - extent, snappedf(summit.z + extent, STEP) - extent)
 	world_ready = true
 
 static func band(v: float, lo: float, hi: float, feather: float) -> float:
@@ -142,8 +144,10 @@ static func height_at(x: float, z: float) -> float:
 	# The very top is finer than the bake can hold: a ~4 m top falling away at a
 	# steady 0.42 grade in every direction, so a push-off rolls straight onto
 	# the face it was aimed at, and the camera sees down every side.
-	var sx := x - summit.x
-	var sz := z - summit.z
+	# The tip sits exactly on an 8 m collision-grid vertex, so every triangle
+	# around it slopes outward: a push-off in ANY direction rolls downhill.
+	var sx := x - apex.x
+	var sz := z - apex.y
 	var r2 := sx * sx + sz * sz
 	if r2 < 6400.0:
 		var cone := summit.y + 2.0 - 0.42 * (sqrt(r2 + 16.0) - 4.0)
@@ -227,21 +231,14 @@ static func region(x: float, z: float) -> String:
 		return face_name(x, z) + " valley"
 	return face_name(x, z) + " face"
 
-## The highest standable point of the world: where every run begins.
+## The highest point of the world, where every run begins: the summit tip,
+## exactly on a collision-grid vertex so the ground falls away on every side.
 static func spawn_point() -> Vector3:
 	if _spawn != Vector3.INF:
 		return _spawn
 	if not world_ready:
 		load_world()
-	var best := Vector3(summit.x, -INF, summit.z)
-	for iz in range(-12, 13):
-		for ix in range(-12, 13):
-			var x := summit.x + ix * 4.0
-			var z := summit.z + iz * 4.0
-			var h := height_at(x, z)
-			if h > best.y:
-				best = Vector3(x, h, z)
-	_spawn = best
+	_spawn = Vector3(apex.x, height_at(apex.x, apex.y), apex.y)
 	return _spawn
 
 static func tile_of(p: Vector3) -> Vector2i:
