@@ -120,6 +120,9 @@ func cell_pos(k: int) -> Vector2:
 ## Dijkstra from `from` to the nearest valley-floor cell, never climbing and
 ## never entering a cliff cell, penalised for leaving the sector.
 func plan(from: Vector3, azimuth_deg: float) -> PackedVector2Array:
+	return plan_with(from, azimuth_deg, false)
+
+func plan_with(from: Vector3, azimuth_deg: float, buffered: bool) -> PackedVector2Array:
 	var top := SnowMountain.spawn_point()
 	var target := deg_to_rad(azimuth_deg)
 	var dist := PackedFloat32Array()
@@ -155,13 +158,19 @@ func plan(from: Vector3, azimuth_deg: float) -> PackedVector2Array:
 			var nk := nj * gn + ni
 			if gcliff[nk] == 1:
 				continue
+			# Never squeeze diagonally between two cliff cells.
+			if dv.x != 0 and dv.y != 0 and (gcliff[cj * gn + ni] == 1 or gcliff[nj * gn + ci] == 1):
+				continue
 			var near_cliff := 0.0
 			for dv2 in dirs:
 				var mi: int = ni + dv2.x
 				var mj: int = nj + dv2.y
 				if mi >= 0 and mj >= 0 and mi < gn and mj < gn and gcliff[mj * gn + mi] == 1:
-					near_cliff = 2.0
+					near_cliff = 3.0
 					break
+			# Keep a cell of clearance from cliff edges where the mountain allows.
+			if buffered and near_cliff > 0.0 and k != s:
+				continue
 			var length := GRID * (1.4142 if dv.x != 0 and dv.y != 0 else 1.0)
 			var dh := gh[nk] - gh[k]
 			# A board must keep descending: tiny rises only, and near-flat ground
@@ -181,7 +190,7 @@ func plan(from: Vector3, azimuth_deg: float) -> PackedVector2Array:
 	var reached := 0
 	for v in dist:
 		if v < INF: reached += 1
-	print("PLAN az=", azimuth_deg, " reached=", reached, " goal=", goal, " cost=", dist[goal] if goal >= 0 else -1.0)
+	print("PLAN az=", azimuth_deg, " buffered=", buffered, " reached=", reached, " goal=", goal, " cost=", dist[goal] if goal >= 0 else -1.0)
 	var path := PackedVector2Array()
 	var k := goal
 	while k != -1:
@@ -264,8 +273,9 @@ func drive(azimuth_deg: float) -> void:
 		var b := (route[mini(route_index + 20, route.size() - 1)] - route[route_index + 8]).normalized()
 		bend = acos(clampf(a.dot(b), -1.0, 1.0))
 	var target_speed := (27.0 if cautious else 36.0) - bend * (10.0 if cautious else 12.0)
-	if SnowMountain.forest_amount(rider.position.x, rider.position.z) > 0.4:
-		target_speed = minf(target_speed, 21.0 if cautious else 27.0)
+	var trees_here := SnowMountain.tree_density(rider.position.x, rider.position.z)
+	if trees_here > 0.25:
+		target_speed = minf(target_speed, lerpf(27.0, 19.0, clampf((trees_here - 0.25) / 0.5, 0.0, 1.0)) - (5.0 if cautious else 0.0))
 	# Local avoidance of the trees and rocks the bot can see.
 	obstacle_timer -= 1
 	if obstacle_timer <= 0:
@@ -340,8 +350,8 @@ func drive(azimuth_deg: float) -> void:
 				safe = desired + offset
 		if not found:
 			target_speed = minf(target_speed, 8.0)   # no clean way: traverse slowly along the least drop
-		elif absf(offset_of(safe, desired)) > 0.4:
-			target_speed = minf(target_speed, 14.0)
+		elif absf(offset_of(safe, desired)) > 0.7:
+			target_speed = minf(target_speed, 18.0)
 		desired = safe
 	var error := wrapf(desired - rider.heading, -PI, PI)
 	# Like a careful human the bot never holds the stick at full lock (over-lean).
@@ -362,11 +372,16 @@ func cliff_ahead(heading: float) -> float:
 	var p := Vector2(rider.position.x, rider.position.z)
 	var h0 := SnowMountain.height_at(p.x, p.y)
 	var reach := clampf(20.0 + rider.speed * 2.0, 30.0, 95.0)
+	var n0 := SnowMountain.normal_at(p.x, p.y)
+	var along_grade := -Vector2(n0.x, n0.z).dot(dir) / maxf(n0.y, 0.2)   # current slope along this heading
 	var d := 8.0
 	var prev := h0
 	while d <= reach:
 		var q := p + dir * d
 		var h := SnowMountain.height_at(q.x, q.y)
+		# Lips and gully rims: the ground falls away far below the line we ride.
+		if (h0 - d * along_grade) - h > 30.0 and h0 - h > 30.0:
+			return (h0 - h) * (1.0 + (reach - d) / reach)
 		# Only real drops matter (a rider survives small steps and gully walls).
 		if prev - h > 8.0 * 1.05 + 1.5 and h0 - h > 18.0:
 			return (h0 - h) * (1.0 + (reach - d) / reach)
@@ -437,7 +452,7 @@ func descend(name: String, azimuth_deg: float) -> Dictionary:
 	var moving_at := -1.0
 	var camera_aligned := 0
 	var camera_samples := 0
-	for i in 30000:
+	for i in 36000:
 		drive(azimuth_deg)
 		await step()
 		distance += previous.distance_to(rider.position)

@@ -134,7 +134,8 @@ func go() -> void:
 
 	# --- Crash: tumble is presentation only ---------------------------------
 	menu.restart()
-	await press_and_run(200)
+	await place_on_slope(16.0)
+	await frames(20)
 	var body_at := rider.position
 	rider.nitro = 0.8
 	var speed_before := rider.speed
@@ -265,17 +266,13 @@ func go() -> void:
 	check(run.state == "ended" and rider.last_crash_reason == "tumbled off a drop", "tumbling over a cliff lip is a fatal fall, by physics not by zone")
 
 	# --- Pass 5: deep lean, plume and over-lean --------------------------------
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 28) # FIXTURE: at speed on the summit face
+	await place_on_slope(28.0)          # FIXTURE: at speed on an open face
 	await frames(2)
 	Input.action_press("steer_right", 0.75)
 	await frames(150)
 	check(rider.recovery == 0.0 and rider.over_lean == 0.0 and rider.plume > 0.5 and rider.plume_side > 0.0, "a committed carve throws a plume and never tips the rider (plume %.2f)" % rider.plume)
 	Input.action_release("steer_right")
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 30)
+	await place_on_slope(30.0)
 	await frames(2)
 	Input.action_press("steer_left", 1.0)
 	var lock_frames := 0
@@ -290,9 +287,7 @@ func go() -> void:
 	check(rider.recovery > 0.0 and rider.last_crash_reason == "over-lean" and lock_frames > 60 and lock_frames < 240, "leaning too far for too long washes the edge out into a tumble (after %.2f s)" % (lock_frames / 60.0))
 	check(max_plume > 0.8 and warned, "full lean throws the biggest plume and builds a warning first")
 	check(rider.nitro == 0.0 and rider.velocity == Vector3.ZERO, "an over-lean fall wipes speed and nitro like any other fall")
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -9, 30)
+	await place_on_slope(30.0)
 	await frames(2)
 	Input.action_press("steer_left", 1.0)
 	Input.action_press("brake", 1.0)
@@ -565,11 +560,17 @@ func go() -> void:
 		var expected := 20.0 * Vector2(n0.x, n0.z).length()   # g * sin(slope)
 		var v0 := rider.speed
 		await frames(45)
-		gains.append(((rider.speed - v0) / 0.75) / expected)
+		if rider.recovery > 0.0 or not rider.is_on_floor():
+			print("DIRECTION %d skipped: fell or airborne" % k)
+			continue
+		var gain := ((rider.speed - v0) / 0.75) / expected
 		var hd := rider.heading
 		Input.action_press("steer_right", 0.7)
 		await frames(20)
 		Input.action_release("steer_right")
+		if rider.recovery > 0.0:
+			continue
+		gains.append(gain)
 		if rider.heading < hd - 0.05:
 			clockwise += 1
 	gains.sort()
@@ -606,9 +607,12 @@ func go() -> void:
 	for d in range(6000, 14000, 50):
 		var q := top + Vector3(0, 0, 1) * d
 		q.y = SnowMountain.height_at(q.x, q.z)
-		if SnowMountain.at_bottom(q) and SnowMountain.normal_at(q.x, q.z).y > 0.97 and mountain.hazards_near(q, 30.0).is_empty():
-			valley = q + Vector3(0, 0, 60)
-			break
+		var q2 := q + Vector3(0, 0, 60)
+		if SnowMountain.at_bottom(q) and SnowMountain.at_bottom(q2) and SnowMountain.normal_at(q.x, q.z).y > 0.97 and SnowMountain.normal_at(q2.x, q2.z).y > 0.97 and SnowMountain.tree_density(q2.x, q2.z) < 0.05:
+			mountain.prepare(q2)
+			if mountain.hazards_near(q2, 40.0).is_empty():
+				valley = q2
+				break
 	menu.restart()
 	run.push_off()
 	run.records_path = "user://test_feel_records.json"
@@ -622,8 +626,10 @@ func go() -> void:
 			finished_airborne = true
 		if run.state != "running":
 			break
+	print("VALLEY FIXTURE at=", valley, " state=", run.state, " reason=", rider.last_crash_reason, " p=", rider.position, " floor=", rider.is_on_floor())
 	check(not finished_airborne and run.state == "finished", "the descent ends only once the board is down on the valley floor, not in the air above it")
-	check(run.record_faces.size() == run.records.size() and run.record_faces[run.last_rank] == SnowMountain.face_name(rider.position.x, rider.position.z), "the record keeps which side of the mountain the run finished on (%s)" % run.record_faces[run.last_rank])
+	var face_ok := run.last_rank >= 0 and run.record_faces.size() == run.records.size() and run.record_faces[run.last_rank] == SnowMountain.face_name(rider.position.x, rider.position.z)
+	check(face_ok, "the record keeps which side of the mountain the run finished on (%s)" % (run.record_faces[run.last_rank] if face_ok else "-"))
 	var legacy := FileAccess.open("user://test_feel_legacy_records.json", FileAccess.WRITE)
 	legacy.store_string("[300.5, 250.25]")
 	legacy.close()
@@ -643,9 +649,7 @@ func go() -> void:
 
 ## FIXTURE: ride off the summit, set a downhill speed, fall, and measure the tumble.
 func tumble_fixture(ride_speed: float, severity: float) -> Dictionary:
-	menu.restart()
-	await press_and_run(60)
-	rider.velocity = Vector3(0, -ride_speed * 0.3, ride_speed)
+	await place_on_slope(ride_speed)
 	await frames(2)
 	events.clear()
 	rider.nitro = 0.6
@@ -688,3 +692,45 @@ func find_drop() -> Array:
 			if h0 - SnowMountain.height_at(q.x, q.z) > 30.0 and SnowMountain.normal_at(p.x - dir.x * 12.0, p.z - dir.z * 12.0).y > 0.8:
 				return [Vector3(p.x, h0, p.z), dir]
 	return [top, Vector3(0, 0, 1)]
+
+## FIXTURE helper: an open, clear stretch of the south face (grade 0.3-0.4,
+## no trees, rocks or cliffs nearby) -> [point, downhill direction].
+var _slope_spot: Array = []
+func slope_spot() -> Array:
+	if not _slope_spot.is_empty():
+		return _slope_spot
+	var top := SnowMountain.spawn_point()
+	var mountain: SnowMountain = game.get_node("Mountain")
+	for d in range(500, 4000, 25):
+		var q := top + Vector3(0, 0, 1) * d
+		var n := SnowMountain.normal_at(q.x, q.z)
+		var grade := Vector2(n.x, n.z).length() / n.y
+		if grade < 0.3 or grade > 0.4 or SnowMountain.forest_amount(q.x, q.z) > 0.05 or SnowMountain.cliff_amount(q.x, q.z) > 0.05:
+			continue
+		mountain.prepare(q)
+		var fall := SnowRider.fall_dir(q)
+		var clear := true
+		for k in 8:
+			var ahead := q + fall * (k * 15.0)
+			if not mountain.hazards_near(ahead, 14.0).is_empty() or SnowMountain.cliff_amount(ahead.x, ahead.z) > 0.05:
+				clear = false
+		if clear:
+			_slope_spot = [Vector3(q.x, SnowMountain.height_at(q.x, q.z), q.z), fall]
+			return _slope_spot
+	_slope_spot = [top, Vector3(0, 0, 1)]
+	return _slope_spot
+
+## FIXTURE: a running descent placed on that stretch, moving down the fall line.
+func place_on_slope(speed: float) -> void:
+	menu.restart()
+	run.push_off()
+	var spot := slope_spot()
+	var p: Vector3 = spot[0]
+	var fall: Vector3 = spot[1]
+	var mountain: SnowMountain = game.get_node("Mountain")
+	mountain.prepare(p)
+	rider.position = Vector3(p.x, rider.ground_y(p.x, p.z) + 0.72, p.z)
+	rider.heading = atan2(fall.x, fall.z)
+	var n := SnowMountain.normal_at(p.x, p.z)
+	rider.velocity = (fall - Vector3.UP * (Vector2(n.x, n.z).length() / n.y)).normalized() * speed
+	await frames(1)

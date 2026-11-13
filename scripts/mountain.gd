@@ -41,8 +41,6 @@ const ROCK_RANGE := 1400.0
 const MAX_TASKS := 6
 ## A descent is complete on a valley floor at least this far below the summit.
 const FINISH_DROP := 1500.0
-## Vertical spacing of cliff bands (m); risers are ~80% of it, benches between.
-const CLIFF_SPACING := 140.0
 const FACES := ["North", "North-east", "East", "South-east", "South", "South-west", "West", "North-west"]
 enum { MASK_FINISH, MASK_CLIFF, MASK_FOREST, MASK_CORNICE }
 
@@ -60,8 +58,6 @@ static var masks := PackedByteArray()
 static var summit := Vector3.ZERO
 static var _spawn := Vector3.INF
 static var _relief: FastNoiseLite = _make_noise(4117, 1.0 / 115.0, 2)
-static var _cliff_noise: FastNoiseLite = _make_noise(733, 1.0 / 420.0, 2)
-static var _cliff_gaps: FastNoiseLite = _make_noise(2291, 1.0 / 700.0, 1)
 static var _drift: FastNoiseLite = _make_noise(5521, 1.0 / 95.0, 1)
 static var _clump: FastNoiseLite = _make_noise(907, 1.0 / 150.0, 2)
 static var _rock_noise: FastNoiseLite = _make_noise(311, 1.0 / 85.0, 1)
@@ -143,29 +139,19 @@ static func mask(x: float, z: float, channel: int) -> float:
 ## Ground height (m). Pure function of position: identical on every thread.
 static func height_at(x: float, z: float) -> float:
 	var h := macro(x, z)
+	# The very top is finer than the bake can hold: a ~4 m top falling away at a
+	# steady 0.42 grade in every direction, so a push-off rolls straight onto
+	# the face it was aimed at, and the camera sees down every side.
+	var sx := x - summit.x
+	var sz := z - summit.z
+	var r2 := sx * sx + sz * sz
+	if r2 < 6400.0:
+		var cone := summit.y + 2.0 - 0.42 * (sqrt(r2 + 16.0) - 4.0)
+		h = lerpf(cone, h, smoothstep(40.0, 80.0, sqrt(r2)))
 	var grade := Vector2(macro(x + 6.0, z) - h, macro(x, z + 6.0) - h).length() / 6.0
-	# Cliff bands: where the cliff mask says so AND the mountain is steep (judged
-	# over 120 m), the slope is gathered into near-vertical rock risers between
-	# benches that follow the contours. Every factor of the band strength varies
-	# over hundreds of metres -- much more gently than the slope itself falls --
-	# so bands can never pull one spot below all of its neighbours (no pits).
-	# Couloirs are where the mask fades (the baked gullies), so lines through exist.
+	# Cliff bands are carved in the bake (so the bake's pit fill guarantees no
+	# band ever encloses a hollow); the cliff mask marks them for rock and colour.
 	var c := mask(x, z, MASK_CLIFF)
-	if c > 0.02:
-		var broad := Vector2(macro(x + 60.0, z) - macro(x - 60.0, z), macro(x, z + 60.0) - macro(x, z - 60.0)).length() / 120.0
-		c *= smoothstep(0.38, 0.62, broad)
-	if c > 0.02:
-		# Bands break into segments with wide gaps between them: ways through.
-		c *= smoothstep(-0.2, 0.35, _cliff_gaps.get_noise_2d(x, z))
-	if c > 0.02:
-		var wobble := _cliff_noise.get_noise_2d(x, z)
-		# The wobble only nudges where a band sits (its slope stays well below the
-		# 0.35 grade where bands start), so bands follow the contours and never
-		# close into rings around a pit.
-		var p := h / CLIFF_SPACING + wobble * 0.12
-		var f := p - floorf(p)
-		var terraced := (floorf(p) + smoothstep(0.82, 1.0, f) - wobble * 0.12) * CLIFF_SPACING
-		h = lerpf(h, terraced, smoothstep(0.02, 0.6, c) * 0.82)
 	# Cornice lips on the lee of high crests.
 	var cornice := mask(x, z, MASK_CORNICE)
 	if cornice > 0.3:
@@ -417,6 +403,8 @@ func plan(p: Vector3) -> void:
 	for t in order:
 		if not l0.has(t):
 			submit("l0", t, gen_l0.bind(t))
+		else:
+			l0[t]["retire"] = false
 	# Unload L0 tiles two or more tiles away (hysteresis): first give their block
 	# its terrain back, then free the nodes when that block mesh is in place.
 	for t in l0.keys():
@@ -427,7 +415,7 @@ func plan(p: Vector3) -> void:
 	for dz in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			var t := centre + Vector2i(dx, dz)
-			if not valid_tile(t) or far.has(t) or want_l0.has(t):
+			if not valid_tile(t) or far.has(t) or want_l0.has(t) or l0.has(t):
 				continue
 			if tile_distance(t, p) < SCENERY_RADIUS:
 				submit("far", t, gen_scenery.bind(t))
@@ -436,8 +424,19 @@ func plan(p: Vector3) -> void:
 			for node in far[t]:
 				node.queue_free()
 			far.erase(t)
-	for b in block_cache:
+	# Blocks that free retiring collision tiles first, then the nearest blocks.
+	for t in l0.keys():
+		if l0[t].get("retire", false):
+			request_block(Vector2i(floori(float(t.x) / BLOCK), floori(float(t.y) / BLOCK)))
+	var blocks_order: Array = block_cache.keys()
+	var here := Vector2(p.x, p.z)
+	blocks_order.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return block_centre(a).distance_squared_to(here) < block_centre(b).distance_squared_to(here))
+	for b in blocks_order:
 		request_block(b)
+
+func block_centre(b: Vector2i) -> Vector2:
+	return Vector2(-extent + (b.x + 0.5) * BLOCK * TILE, -extent + (b.y + 0.5) * BLOCK * TILE)
 
 func tile_distance(t: Vector2i, p: Vector3) -> float:
 	var o := tile_origin(t) + Vector2(TILE, TILE) * 0.5
@@ -506,22 +505,21 @@ func complete(name: String) -> void:
 		return
 	WorkerThreadPool.wait_for_task_completion(pending[name])
 	pending.erase(name)
-	if true: # (kept as a block so the apply step reads as one unit)
-		mutex.lock()
-		var data: Dictionary = results.get(name, {})
-		results.erase(name)
-		mutex.unlock()
-		var info: Array = task_info[name]
-		task_info.erase(name)
-		match info[0]:
-			"l0":
-				if not l0.has(info[1]):
-					apply_l0(info[1], data)
-			"far":
-				if not far.has(info[1]) and not l0.has(info[1]):
-					apply_far(info[1], data)
-			"block":
-				apply_block(info[1], data, info[2])
+	mutex.lock()
+	var data: Dictionary = results.get(name, {})
+	results.erase(name)
+	mutex.unlock()
+	var info: Array = task_info[name]
+	task_info.erase(name)
+	match info[0]:
+		"l0":
+			if not l0.has(info[1]):
+				apply_l0(info[1], data)
+		"far":
+			if not far.has(info[1]) and not l0.has(info[1]):
+				apply_far(info[1], data)
+		"block":
+			apply_block(info[1], data, info[2])
 
 # ------------------------------------------------------------------ generation (worker threads)
 static func gen_l0(t: Vector2i) -> Dictionary:
@@ -775,15 +773,22 @@ func apply_l0(t: Vector2i, data: Dictionary) -> void:
 	planting.append([t, data["scenery"]])
 	stream_stats["l0_built"] += 1
 
-## Plant at most one tile's scenery per call (main thread).
+## Plant one step of one tile's scenery per call (main thread): its trees on one
+## frame, its rocks on the next, so no single frame does it all.
 func plant_next() -> void:
 	while not planting.is_empty():
-		var job: Array = planting.pop_front()
+		var job: Array = planting[0]
 		var t: Vector2i = job[0]
-		if l0.has(t) and not l0[t].get("planted", false):
-			l0[t]["nodes"].append_array(plant(t, job[1], true))
+		if not l0.has(t) or l0[t].get("planted", false):
+			planting.pop_front()
+			continue
+		var stage: int = l0[t].get("stage", 0)
+		l0[t]["nodes"].append_array(plant(t, job[1], true, stage))
+		l0[t]["stage"] = stage + 1
+		if stage >= 1:
 			l0[t]["planted"] = true
-			return
+			planting.pop_front()
+		return
 
 func plant_all() -> void:
 	while not planting.is_empty():
@@ -794,8 +799,10 @@ func apply_far(t: Vector2i, data: Dictionary) -> void:
 
 ## Trees (and, near the rider, rocks) for a tile. With `solid`, colliders and
 ## hazard records are made too.
-func plant(t: Vector2i, scenery: Dictionary, solid: bool) -> Array:
+func plant(t: Vector2i, scenery: Dictionary, solid: bool, stage := -1) -> Array:
 	var nodes: Array = []
+	if solid and stage == 1:
+		return plant_rocks(t, scenery)
 	var near_x: Array = [[], [], [], []]
 	var near_c: Array = [[], [], [], []]
 	var trees: PackedVector4Array = scenery["trees"]
@@ -835,48 +842,54 @@ func plant(t: Vector2i, scenery: Dictionary, solid: bool) -> Array:
 			nodes.append(tree_body)
 		else:
 			tree_body.free()
-		var stones := StaticBody3D.new()
-		stones.collision_layer = 2
-		stones.set_meta("hazard", "rock")
-		var rx: Array = [[], [], [], []]
-		var rc: Array = [[], [], [], []]
-		for r in scenery["rocks"]:
-			var variant: int = r[0]
-			var basis: Basis = r[1]
-			var scale_vec: Vector3 = r[2]
-			var at: Vector3 = r[3]
-			rx[variant].append(Transform3D(basis.scaled_local(scale_vec), at))
-			rc[variant].append(r[4])
-			var points := PackedVector3Array()
-			for p in rock_variants[variant][1]:
-				points.append(p * scale_vec)
-			var hull := ConvexPolygonShape3D.new()
-			hull.points = points
-			var collision := CollisionShape3D.new()
-			collision.shape = hull
-			collision.transform = Transform3D(basis, at)
-			stones.add_child(collision)
-			if r[5]:
-				outcrop_count += 1
-			else:
-				rock_count += 1
-		if stones.get_child_count() > 0:
-			add_child(stones)
-			nodes.append(stones)
-		else:
-			stones.free()
-		for v in 4:
-			var xs: Array[Transform3D] = []
-			xs.assign(rx[v])
-			var cs: Array[Color] = []
-			cs.assign(rc[v])
-			nodes.append(batch(rock_variants[v][0], xs, cs, rock_material, 0.0, ROCK_RANGE))
-		var hz: PackedVector4Array = scenery["hazards"]
-		hazard_buckets[t] = hz
-		tree_buckets[t] = hz.slice(0, scenery["tree_hazards"])
 		tree_count += trees.size()
-	nodes = nodes.filter(func(node): return node != null)
-	return nodes
+		if stage == -1:
+			nodes.append_array(plant_rocks(t, scenery))
+	return nodes.filter(func(node): return node != null)
+
+## Rocks and outcrops (visuals + convex colliders) and the tile's hazard records.
+func plant_rocks(t: Vector2i, scenery: Dictionary) -> Array:
+	var nodes: Array = []
+	var stones := StaticBody3D.new()
+	stones.collision_layer = 2
+	stones.set_meta("hazard", "rock")
+	var rx: Array = [[], [], [], []]
+	var rc: Array = [[], [], [], []]
+	for r in scenery["rocks"]:
+		var variant: int = r[0]
+		var basis: Basis = r[1]
+		var scale_vec: Vector3 = r[2]
+		var at: Vector3 = r[3]
+		rx[variant].append(Transform3D(basis.scaled_local(scale_vec), at))
+		rc[variant].append(r[4])
+		var points := PackedVector3Array()
+		for p in rock_variants[variant][1]:
+			points.append(p * scale_vec)
+		var hull := ConvexPolygonShape3D.new()
+		hull.points = points
+		var collision := CollisionShape3D.new()
+		collision.shape = hull
+		collision.transform = Transform3D(basis, at)
+		stones.add_child(collision)
+		if r[5]:
+			outcrop_count += 1
+		else:
+			rock_count += 1
+	if stones.get_child_count() > 0:
+		add_child(stones)
+		nodes.append(stones)
+	else:
+		stones.free()
+	for v in 4:
+		var xs: Array[Transform3D] = []
+		xs.assign(rx[v])
+		var cs: Array[Color] = []
+		cs.assign(rc[v])
+		nodes.append(batch(rock_variants[v][0], xs, cs, rock_material, 0.0, ROCK_RANGE))
+	var hz: PackedVector4Array = scenery["hazards"]
+	hazard_buckets[t] = hz
+	tree_buckets[t] = hz.slice(0, scenery["tree_hazards"])
+	return nodes.filter(func(node): return node != null)
 
 func batch(mesh: Mesh, transforms: Array[Transform3D], custom: Array[Color], mat: Material, range_begin: float, range_end: float, shadows := true) -> MultiMeshInstance3D:
 	if transforms.is_empty():

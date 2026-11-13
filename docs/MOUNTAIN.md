@@ -24,13 +24,13 @@ A skilled descent takes about five minutes on most faces (the bots' times are in
 1. **Ridge skeleton.** A summit ridge joins the main summit to two subsidiary peaks (north-west ~3,390 m, south-east ~3,300 m). Ten aretes run from the peaks out to the valleys, each with side spurs. The skeleton is measured in a domain-warped space, so ridges meander instead of running straight.
 2. **Flanks by aspect.** Every point takes the highest of the flanks falling away from the skeleton (a smooth maximum, so valleys get rounded bottoms). How a flank falls depends on which way it faces: north-facing slopes are short and steep, south-facing ones long and open, east and west in between. This is what gives the faces their different characters and the ridges their asymmetric profiles.
 3. **Summit dome**, valley floors that fall gently away from the base (each side at its own elevation), and the surrounding ranges beyond them. The ranges' front wanders by kilometres and foothills stand on the floors, so the valleys are not a ring.
-4. **Rock relief and stream-power erosion** (32 passes of flow accumulation): dendritic gullies and spurs on every face.
-5. **Pit filling** (priority flood from the valley floors): no closed hollow anywhere on the mountain. Filled flats keep a 0.07 grade, so a stopped rider can always glide or skate out.
-6. **Masks**: valley floor (where a descent can end), cliff bands (by face and altitude, broken where the gullies run: those are the couloirs), forest (below each face's treeline, thinned on steep ground and on the floors), cornices (the lee lip of high crests).
+4. **Rock relief and stream-power erosion** (32 passes of flow accumulation, gently smoothed so gully walls stay rideable): dendritic gullies and spurs on every face.
+5. **Cliff bands**: where a face is meant to be cliffy (strongest north, north-west and west, by altitude) *and* is already steep (judged over ~100 m), the slope is gathered into rock risers (45–55°, up to ~100 m tall, every 140 m of height) with benches between that follow the contours. Bands break into segments with wide gaps, and fade where the gullies run: those are the couloirs.
+6. **Pit filling** (priority flood from the valley floors) runs AFTER the bands: no closed hollow anywhere on the mountain, guaranteed. Filled flats (frozen tarns) keep a 0.07 grade, so a stopped rider can always glide or skate out.
+7. **Masks**: valley floor (where a descent can end), cliff (where bands were carved: rock colour, rocks), forest (below each face's treeline, thinned on steep ground and on the floors), cornices (the lee lip of high crests).
 
 **Runtime detail** (`SnowMountain.height_at`, same function for rendering, collision, physics, camera, audio, tumbles and tests):
 
-- **Cliff bands**: where the cliff mask is set *and* the mountain is already steep (grade above ~0.35–0.6), the slope is gathered into near-vertical rock risers (~130 m tall, every 165 m of height) with benches between that keep a real slope. Bands break into segments a few hundred metres long; the gaps and the gullies are the ways through. Bands follow the contours, so they never close into rings around a pit.
 - **Cornice lips** on the lee of high crests.
 - **Wind-drift rollers** on open, moderately steep snow (30–50 m across, up to ~3.6 m): natural kickers for a fast rider. They fade on gentle ground so they never dig pockets.
 - **Small relief** (±0.6–2.6 m).

@@ -214,7 +214,7 @@ func go() -> void:
 	tree.add_child(shape)
 	game.add_child(tree)
 	rider.position = ground(65.0) + Vector3(0, 0.72, 0)
-	rider.velocity = Vector3(0, -6, 40)
+	rider.velocity = along_slope(rider.position, 40.0)
 	rider.nitro = 0.8
 	await frames(20)
 	print("TREE CHECK state=", run.state, " recovery=", rider.recovery, " p=", rider.position, " v=", rider.velocity)
@@ -222,7 +222,7 @@ func go() -> void:
 	menu.restart()
 	run.push_off()
 	rider.position = ground(65.0) + Vector3(0, 0.72, 0)
-	rider.velocity = Vector3(0, -3, 15)
+	rider.velocity = along_slope(rider.position, 15.0)
 	rider.nitro = 0.5
 	await frames(35)
 	check(run.state == "running" and rider.recovery > 0 and rider.nitro == 0 and rider.velocity == Vector3.ZERO, "moderate actual tree collision enters nonfatal recovery")
@@ -252,3 +252,8 @@ func go() -> void:
 func ground(south: float) -> Vector3:
 	var top := SnowMountain.spawn_point()
 	return Vector3(top.x, SnowMountain.height_at(top.x, top.z + south), top.z + south)
+
+## Due-south velocity that follows the snow surface (fixtures).
+func along_slope(p: Vector3, speed: float) -> Vector3:
+	var n := SnowMountain.normal_at(p.x, p.z)
+	return Vector3(0, 0, 1).slide(n).normalized() * speed

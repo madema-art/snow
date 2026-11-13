@@ -276,8 +276,11 @@ def build():
         acc += np.exp(np.clip((crest - drop - SUMMIT_HEIGHT) / K, -700, 50))
     h = SUMMIT_HEIGHT + K * np.log(acc + 1e-300)
     # A rounded summit dome: the board can point any way and roll off gently.
-    dome = SUMMIT_HEIGHT + 6.0 - r * r / 1100.0
-    h = np.maximum(h, dome) + K * np.log1p(np.exp(-np.abs(h - dome) / K))
+    # The summit: a small, nearly flat top (~8 m) that falls away at a steady
+    # 0.42 grade in every direction -- gentle enough to roll off anywhere, and a
+    # straight (not convex) slope, so from the top you can see down every face.
+    dome = SUMMIT_HEIGHT + 3.4 - 0.42 * np.sqrt(r * r + 8.0 ** 2)
+    h = np.maximum(h, dome) + 20.0 * np.log1p(np.exp(-np.abs(h - dome) / 20.0))
     # Valley floors around the base (gently falling outward) and the surrounding
     # ranges beyond them, broken by passes where rivers leave.
     plain = floor - 0.025 * np.clip(r - R * 0.8, 0.0, None) + noise.fbm(X / 3000.0, Z / 3000.0, 3) * 35.0
@@ -307,35 +310,52 @@ def build():
     for it in range(32):
         acc, s = flow_accumulation(h)
         area = acc * d * d
-        incision = 0.0017 * np.sqrt(area) * np.clip(s, 0, 1.2)
+        incision = 0.0011 * np.sqrt(area) * np.clip(s, 0, 1.2)
         incision *= np.clip(alt + 0.25, 0.0, 1.0)
-        h -= np.clip(incision, 0, 9.0)
-        h = 0.92 * h + 0.08 * blur(h)
+        h -= np.clip(incision, 0, 5.0)
+        h = 0.88 * h + 0.12 * blur(h)   # gully walls stay rideable (no slot canyons)
         if it % 7 == 0:
             print("  pass", it, "max incision", float(incision.max()), flush=True)
-    # Mountain hollows drain to the valley floors (which stay basins: they are
-    # where every descent ends).
-    h = fill_pits(h, d, (u > 0.92) & (h < floor + 100.0))
     acc, s = flow_accumulation(h)
 
-    # The top stays a clean, rideable dome (erosion must not notch it).
-    dome = SUMMIT_HEIGHT + 6.0 - r * r / 1100.0
-    cap = np.clip(1.0 - r / 380.0, 0.0, 1.0)
-    h = h * (1.0 - cap) + np.maximum(h, dome) * cap
-
-    slope = slope_of(h, d)
+    # --- Cliff bands, carved here (not at runtime) so the pit fill below can
+    # guarantee that no band ever encloses a hollow a rider could be trapped in.
     alt = np.clip((h - floor) / (SUMMIT_HEIGHT - floor), 0.0, 1.0)
-    # --- masks (computed at full resolution, stored at M)
     gully = np.clip(np.log(acc) / 9.0, 0, 1)
     patches = noise.fbm(X / 700.0 + 40.0, Z / 700.0, 3)
     cliff = ang_interp(th, CLIFFS) * np.clip((alt - 0.12) / 0.18, 0, 1) * np.clip((0.97 - alt) / 0.1, 0, 1)
     cliff *= np.clip(0.55 + patches * 1.6, 0, 1)
     cliff *= 1.0 - np.clip((gully - 0.55) / 0.2, 0, 1)        # couloirs follow the gullies
     cliff *= np.clip((u - 0.06) / 0.08, 0, 1)                  # never on the summit cap
-    cliff = np.clip(cliff, 0, 1)
-    # Bands must change strength slowly across the ground (much more slowly than
-    # the slope falls), or terracing at runtime could carve closed pits.
-    cliff = blur(cliff, 10)
+    cliff = blur(np.clip(cliff, 0, 1), 6)
+    broad = slope_of(blur(h, 3), d)
+    gate = np.clip((broad - 0.38) / 0.24, 0, 1)
+    gaps = np.clip((noise.fbm(X / 700.0 + 13.0, Z / 700.0 - 21.0, 1) + 0.2) / 0.55, 0, 1)
+    weight = np.clip(cliff * gate * gaps / 0.6, 0, 1) * 0.82
+    spacing = 140.0
+    wobble = noise.fbm(X / 420.0 - 5.0, Z / 420.0 + 9.0, 2)
+    phase = h / spacing + wobble * 0.12
+    frac = phase - np.floor(phase)
+    riser = np.clip((frac - 0.8) / 0.2, 0, 1)
+    riser = riser * riser * (3 - 2 * riser)
+    terraced = (np.floor(phase) + riser - wobble * 0.12) * spacing
+    h = h + weight * (terraced - h)
+    h = 0.75 * h + 0.25 * blur(h)                                # no cubic overshoot at the lips
+    # Mountain hollows (including any left by the bands) drain to the valley
+    # floors, which stay basins: they are where every descent ends.
+    h = fill_pits(h, d, (u > 0.92) & (h < floor + 100.0))
+    acc, s = flow_accumulation(h)
+
+    # The top stays a clean, rideable dome (erosion must not notch it).
+    dome = SUMMIT_HEIGHT + 3.4 - 0.42 * np.sqrt(r * r + 8.0 ** 2)
+    cap = np.clip(1.0 - r / 260.0, 0.0, 1.0)
+    h = h * (1.0 - cap) + np.maximum(h, dome) * cap
+
+    slope = slope_of(h, d)
+    alt = np.clip((h - floor) / (SUMMIT_HEIGHT - floor), 0.0, 1.0)
+    # --- masks (computed at full resolution, stored at M)
+    # The stored cliff mask marks where bands were carved (rock colour, rocks).
+    cliff = np.clip(weight / 0.82 + 0.3 * cliff, 0, 1)
     treeline = ang_interp(th, TREELINE)
     forest = ang_interp(th, FOREST) * np.clip((treeline - h) / 250.0, 0, 1)
     forest *= np.clip((0.95 - slope) / 0.35, 0, 1)

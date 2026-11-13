@@ -93,7 +93,7 @@ func go() -> void:
 	rider.position = Vector3(far_start.x, rider.ground_y(far_start.x, far_start.z) + 0.75, far_start.z)
 	rider.heading = 0.0
 	var crossed_tiles := {}
-	for i in 1500:
+	for i in 2700:
 		rider.velocity = Vector3(0, minf(rider.velocity.y, 0.0), 42.0)   # FIXTURE: hold 42 m/s due south
 		rider.recovery = 0.0
 		await physics_frame
