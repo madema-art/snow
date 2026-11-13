@@ -93,7 +93,11 @@ vec3 aurora(vec3 d, float dither) {
 		// A per-pixel offset between the planes hides their stepping.
 		float k = (float(i) + dither) / 16.0;
 		float height = 0.8 + k * 1.15;
-		vec2 uv = d.xz / (d.y + 0.14) * height;
+		// Curtain space: .y runs away from the viewer toward the aurora's side of
+		// the sky (aurora_dir), .x along the horizon.
+		vec2 toward = normalize(aurora_dir);
+		vec2 flat_d = vec2(dot(d.xz, vec2(toward.y, -toward.x)), dot(d.xz, toward));
+		vec2 uv = flat_d / (d.y + 0.14) * height;
 		float warp = vnoise(uv * 0.3 + vec2(t, 0.0)) * 1.9 + vnoise(uv * 0.9 - vec2(0.0, t * 1.6)) * 0.5 + sin(uv.x * 0.22 + t * 1.3) * 0.9;
 		float c1 = uv.y - (2.3 + warp);
 		float c2 = uv.y - (4.3 + warp * 1.3 + sin(uv.x * 0.41 - t * 2.0) * 0.6);

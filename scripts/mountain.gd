@@ -34,8 +34,8 @@ const L1_CELLS := 20
 const L2_CELLS := 5
 const BLOCK := 5                       # tiles per block side
 const L1_RADIUS := 3600.0
-const SCENERY_RADIUS := 1900.0
-const TREE_NEAR_RANGE := 320.0
+const SCENERY_RADIUS := 1500.0
+const TREE_NEAR_RANGE := 420.0          # per 320 m batch centre: trees within ~190 m are always detailed
 const TREE_FAR_RANGE := 2100.0
 const ROCK_RANGE := 1400.0
 const MAX_TASKS := 6
@@ -196,7 +196,7 @@ static func cliff_amount(x: float, z: float) -> float:
 ## Tree density 0..1: forest belts below the treeline (by face), in clumps.
 static func tree_density(x: float, z: float) -> float:
 	var clump := smoothstep(-0.2, 0.3, _clump.get_noise_2d(x, z))
-	return clampf(mask(x, z, MASK_FOREST) * (0.2 + 0.8 * clump), 0.0, 1.0)
+	return clampf(mask(x, z, MASK_FOREST) * (0.45 + 0.65 * clump), 0.0, 1.0)
 
 ## Rocks gather into gardens and moraines, most below cliffs and high up.
 static func rock_density(x: float, z: float, h: float) -> float:
@@ -666,7 +666,7 @@ static func gen_scenery(t: Vector2i) -> Dictionary:
 	var tree_custom := PackedColorArray()
 	var rocks: Array = []                    # [variant, Basis, scale Vector3, at Vector3, custom Color, outcrop]
 	var hazards := PackedVector4Array()
-	for i in 980:
+	for i in 1400:
 		var x := o.x + rng.randf_range(6.0, TILE - 6.0)
 		var z := o.y + rng.randf_range(6.0, TILE - 6.0)
 		var roll := rng.randf()
@@ -803,8 +803,18 @@ func plant(t: Vector2i, scenery: Dictionary, solid: bool, stage := -1) -> Array:
 	var nodes: Array = []
 	if solid and stage == 1:
 		return plant_rocks(t, scenery)
-	var near_x: Array = [[], [], [], []]
-	var near_c: Array = [[], [], [], []]
+	# Level of detail is chosen per batch by its distance to the camera, so the
+	# trees are batched per 320 m quarter of the tile (near meshes: 4 variants;
+	# far: one shared simple mesh). A whole-tile batch would show far trees
+	# right next to the rider whenever the tile's centre was far away.
+	var near_x: Array = []
+	var near_c: Array = []
+	var far_x: Array = [[], [], [], []]
+	var far_c: Array = [[], [], [], []]
+	for q in 4:
+		near_x.append([[], [], [], []])
+		near_c.append([[], [], [], []])
+	var origin := tile_origin(t)
 	var trees: PackedVector4Array = scenery["trees"]
 	var looks: PackedColorArray = scenery["tree_looks"]
 	var custom: PackedColorArray = scenery["tree_custom"]
@@ -818,8 +828,11 @@ func plant(t: Vector2i, scenery: Dictionary, solid: bool, stage := -1) -> Array:
 		var s := tr.w
 		var variant := int(looks[i].r)
 		var xf := Transform3D(Basis(Vector3.UP, looks[i].g).scaled(Vector3(s, s * looks[i].b, s)), Vector3(tr.x, tr.y - 0.3, tr.z))
-		near_x[variant].append(xf)
-		near_c[variant].append(custom[i])
+		var quarter := (1 if tr.x - origin.x >= TILE * 0.5 else 0) + (2 if tr.z - origin.y >= TILE * 0.5 else 0)
+		near_x[quarter][variant].append(xf)
+		near_c[quarter][variant].append(custom[i])
+		far_x[quarter].append(xf)
+		far_c[quarter].append(custom[i])
 		if solid:
 			var cylinder := CylinderShape3D.new()
 			cylinder.radius = SnowMeshes.TRUNK_RADIUS * s
@@ -828,14 +841,19 @@ func plant(t: Vector2i, scenery: Dictionary, solid: bool, stage := -1) -> Array:
 			collision.shape = cylinder
 			collision.position = Vector3(tr.x, tr.y, tr.z) + Vector3.UP * (SnowMeshes.TRUNK_SOLID_HEIGHT * 0.5 * s - 0.3)
 			tree_body.add_child(collision)
-	for v in 4:
-		var xs: Array[Transform3D] = []
-		xs.assign(near_x[v])
-		var cs: Array[Color] = []
-		cs.assign(near_c[v])
+	for q in 4:
 		if solid:
-			nodes.append(batch(tree_variants[v][0], xs, cs, tree_material, 0.0, TREE_NEAR_RANGE))
-		nodes.append(batch(tree_variants[v][1], xs, cs, tree_material, TREE_NEAR_RANGE if solid else 0.0, TREE_FAR_RANGE, false))
+			for v in 4:
+				var xs: Array[Transform3D] = []
+				xs.assign(near_x[q][v])
+				var cs: Array[Color] = []
+				cs.assign(near_c[q][v])
+				nodes.append(batch(tree_variants[v][0], xs, cs, tree_material, 0.0, TREE_NEAR_RANGE))
+		var fx: Array[Transform3D] = []
+		fx.assign(far_x[q])
+		var fc: Array[Color] = []
+		fc.assign(far_c[q])
+		nodes.append(batch(tree_variants[0][1], fx, fc, tree_material, TREE_NEAR_RANGE if solid else 0.0, TREE_FAR_RANGE, false))
 	if solid:
 		if tree_body.get_child_count() > 0:
 			add_child(tree_body)

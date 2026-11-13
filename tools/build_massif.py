@@ -42,8 +42,8 @@ FLOOR = [1050, 860, 600, 520, 380, 460, 720, 940]                # valley floor 
 CONCAVITY = [1.95, 1.7, 1.35, 1.45, 1.15, 1.4, 1.6, 1.85]       # steepness near the top
 OUTER = [1.25, 1.32, 1.22, 1.36, 1.4, 1.28, 1.2, 1.24]           # where the surrounding ranges rise (x base radius)
 CLIFFS = [0.85, 0.5, 0.2, 0.22, 0.08, 0.3, 0.55, 0.6]          # cliff-band strength
-FOREST = [0.3, 0.55, 1.0, 0.75, 0.35, 0.45, 0.55, 0.4]           # forest density
-TREELINE = [1750, 1950, 2250, 2200, 2150, 2050, 1950, 1800]      # treeline elevation
+FOREST = [0.6, 0.8, 1.0, 0.9, 0.65, 0.75, 0.8, 0.65]           # forest density
+TREELINE = [2050, 2250, 2550, 2450, 2400, 2350, 2250, 2100]      # treeline elevation
 ROUGH = [1.25, 1.0, 0.8, 0.85, 0.55, 0.8, 1.1, 1.2]              # rock relief
 
 # Flank shape by the direction a slope faces (N, NE, E, SE, S, SW, W, NW):
@@ -331,7 +331,7 @@ def build():
     broad = slope_of(blur(h, 3), d)
     gate = np.clip((broad - 0.38) / 0.24, 0, 1)
     gaps = np.clip((noise.fbm(X / 700.0 + 13.0, Z / 700.0 - 21.0, 1) + 0.2) / 0.55, 0, 1)
-    weight = np.clip(cliff * gate * gaps / 0.6, 0, 1) * 0.82
+    weight = np.clip(cliff * gate * gaps / 0.6, 0, 1) * 0.65   # benches keep ~35% of the slope: rideable, never flat
     spacing = 140.0
     wobble = noise.fbm(X / 420.0 - 5.0, Z / 420.0 + 9.0, 2)
     phase = h / spacing + wobble * 0.12
@@ -355,15 +355,15 @@ def build():
     alt = np.clip((h - floor) / (SUMMIT_HEIGHT - floor), 0.0, 1.0)
     # --- masks (computed at full resolution, stored at M)
     # The stored cliff mask marks where bands were carved (rock colour, rocks).
-    cliff = np.clip(weight / 0.82 + 0.3 * cliff, 0, 1)
+    cliff = np.clip(weight / 0.65 + 0.3 * cliff, 0, 1)
     treeline = ang_interp(th, TREELINE)
     forest = ang_interp(th, FOREST) * np.clip((treeline - h) / 250.0, 0, 1)
     forest *= np.clip((0.95 - slope) / 0.35, 0, 1)
-    forest *= np.clip(0.5 + noise.fbm(X / 1100.0 - 20.0, Z / 1100.0, 3) * 1.4, 0.15, 1)
+    forest *= np.clip(0.7 + noise.fbm(X / 1100.0 - 20.0, Z / 1100.0, 3) * 1.4, 0.2, 1)
     # Valley floors: the bottom of the mountain, on every side. Low, gentle and
     # beyond the mountain's base -- never a ravine floor high on the flanks.
-    floor_mask = (h < floor + 90.0) & (u > 0.86) & (slope < 0.24)
-    finish = blur(floor_mask.astype(np.float64), 2)
+    floor_mask = (h < floor + 90.0) & (u > 0.84) & (slope < 0.3)
+    finish = blur(floor_mask.astype(np.float64), 3)
     forest *= 1.0 - 0.6 * finish                                 # meadows on the floors
     # Cornices: the lee (east-north-east) lip of high, sharp crests.
     crest = h - (np.roll(h, 3, 0) + np.roll(h, -3, 0) + np.roll(h, 3, 1) + np.roll(h, -3, 1)) * 0.25

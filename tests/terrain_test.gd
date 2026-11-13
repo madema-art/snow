@@ -48,9 +48,11 @@ func go() -> void:
 			break
 	if seam_found != Vector3.INF:
 		run.restart()
+		rider.reset()
 		run.push_off()
 		mountain.prepare(seam_found)
 		rider.position = Vector3(seam_found.x, rider.ground_y(seam_found.x, seam_found.z) + 0.75, seam_found.z)
+		rider.launch_height = rider.position.y
 		rider.heading = 0.0
 		rider.velocity = Vector3(0, -4, 40)               # FIXTURE: fast, straight across the seam
 		var start_tile := SnowMountain.tile_of(rider.position)
@@ -61,11 +63,12 @@ func go() -> void:
 			speeds.append(rider.speed)
 			if crossed < 0 and SnowMountain.tile_of(rider.position) != start_tile:
 				crossed = i
-		# Compare the speed change across the seam with the change just before it
-		# (drag and gravity act the same; a seam would add a sudden loss).
-		var across := speeds[mini(crossed + 3, 119)] - speeds[maxi(crossed - 3, 0)] if crossed >= 3 else -99.0
-		var before := speeds[maxi(crossed - 3, 0)] - speeds[maxi(crossed - 9, 0)] if crossed >= 9 else 0.0
-		check(crossed >= 0 and rider.recovery == 0.0 and across > before - 1.0 and rider.position.y > SnowMountain.height_at(rider.position.x, rider.position.z) - 1.0, "crossing a tile seam at 40 m/s keeps momentum (%.2f m/s across the seam vs %.2f just before)" % [across, before])
+		# A seam loss would be a sudden drop in a single frame; gravity, drag and
+		# the slope change speed by a fraction of that per frame.
+		var worst_step := 0.0
+		for i in range(maxi(crossed - 4, 1), mini(crossed + 5, 120)):
+			worst_step = maxf(worst_step, speeds[i - 1] - speeds[i])
+		check(crossed >= 0 and rider.recovery == 0.0 and worst_step < 0.6 and rider.position.y > SnowMountain.height_at(rider.position.x, rider.position.z) - 1.0, "crossing a tile seam at 40 m/s keeps momentum (largest one-frame loss at the seam %.2f m/s)" % worst_step)
 	else:
 		check(false, "found an open slope across a tile seam for the fixture")
 
@@ -83,25 +86,25 @@ func go() -> void:
 					ok = false
 	check(ok, "the 3x3 collision tiles stream around the rider in every direction")
 	check(mountain.l0.size() <= 30, "streaming keeps memory bounded (%d collision tiles loaded)" % mountain.l0.size())
-	# Riding a long way: streaming keeps up without synchronous builds or long frames.
+	# Travelling a long way at 42 m/s: streaming keeps up without synchronous
+	# builds. FIXTURE: the rider is carried along a line (state "ready", so its
+	# own physics stays still); only the streamer is under test here.
 	run.restart()
+	rider.reset()
 	var syncs: int = mountain.stream_stats["sync_builds"]
 	mountain.stream_stats["max_frame_ms"] = 0.0
-	run.push_off()
-	var far_start := top + Vector3(0, 0, 1) * 1200.0
-	mountain.prepare(far_start)
-	rider.position = Vector3(far_start.x, rider.ground_y(far_start.x, far_start.z) + 0.75, far_start.z)
-	rider.heading = 0.0
+	var line_start := top + Vector3(0, 0, 1) * 1200.0
 	var crossed_tiles := {}
 	for i in 2700:
-		rider.velocity = Vector3(0, minf(rider.velocity.y, 0.0), 42.0)   # FIXTURE: hold 42 m/s due south
-		rider.recovery = 0.0
+		var q := line_start + Vector3(0, 0, 1) * (42.0 * i / 60.0)
+		rider.global_position = Vector3(q.x, SnowMountain.height_at(q.x, q.z) + 0.75, q.z)
+		rider.velocity = Vector3(0, 0, 42.0)
 		await physics_frame
 		await process_frame
 		crossed_tiles[SnowMountain.tile_of(rider.position)] = true
 	print("STREAM ride tiles=", crossed_tiles.size(), " stats=", mountain.stream_stats)
 	check(crossed_tiles.size() >= 3 and mountain.stream_stats["sync_builds"] == syncs, "at 42 m/s the streamer stays ahead of the rider (%d tiles, no emergency builds)" % crossed_tiles.size())
-	print("STREAM stats=", mountain.stream_stats)
+	rider.velocity = Vector3.ZERO
 
 	# 4. Natural kickers: open slopes carry wind-drift rollers, so a fast rider
 	# going straight leaves the snow somewhere on the south snowfields.
@@ -110,10 +113,12 @@ func go() -> void:
 	var airtime := 0.0
 	for dist in [1500.0, 2200.0, 2900.0, 3600.0]:
 		run.restart()
+		rider.reset()
 		run.push_off()
 		var start: Vector3 = top + Vector3(0, 0, 1) * dist
 		mountain.prepare(start)
 		rider.position = Vector3(start.x, rider.ground_y(start.x, start.z) + 0.75, start.z)
+		rider.launch_height = rider.position.y
 		var fall := SnowRider.fall_dir(rider.position)
 		rider.heading = atan2(fall.x, fall.z)
 		rider.velocity = fall * 30.0                      # FIXTURE: carrying speed down the fall line

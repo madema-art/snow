@@ -106,7 +106,8 @@ void fragment() {
 	EMISSION += night * (1.0 - rock) * (vec3(0.20, 0.32, 0.60) * grazing * 0.035 + aurora_tint * aurora_wash * smoothstep(0.6, 0.95, nw.y) * 0.02);
 	// Beyond the range where real trees are drawn, forests are painted as dark,
 	// snow-dusted stands so the timbered flanks still read from the summit.
-	float far_forest = smoothstep(0.3, 0.7, lod_data.x) * smoothstep(1500.0, 2300.0, dist) * (1.0 - rock);
-	ALBEDO = mix(albedo, mix(vec3(0.05, 0.09, 0.07), snow * 0.8, 0.3), far_forest * 0.8);
+	float stands = smoothstep(0.2, 0.55, lod_data.x + (vnoise(wpos.xz * 0.02) - 0.5) * 0.25);
+	float far_forest = stands * smoothstep(900.0, 1700.0, dist) * (1.0 - rock);
+	ALBEDO = mix(albedo, mix(vec3(0.05, 0.09, 0.07), snow * 0.8, 0.25), far_forest * 0.85);
 	NORMAL = normalize((VIEW_MATRIX * vec4(detail_n, 0.0)).xyz);
 }

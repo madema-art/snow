@@ -552,6 +552,7 @@ func go() -> void:
 		run.push_off()
 		mountain.prepare(spot)
 		rider.position = Vector3(spot.x, rider.ground_y(spot.x, spot.z) + 0.72, spot.z)
+		rider.launch_height = rider.position.y
 		var fall := SnowRider.fall_dir(spot)
 		rider.heading = atan2(fall.x, fall.z)
 		rider.velocity = fall * 8.0                       # FIXTURE: a rolling start down the fall line
@@ -618,6 +619,7 @@ func go() -> void:
 	run.records_path = "user://test_feel_records.json"
 	mountain.prepare(valley)
 	rider.position = Vector3(valley.x, rider.ground_y(valley.x, valley.z) + 6.0, valley.z)
+	rider.launch_height = rider.position.y
 	rider.velocity = Vector3(0, 0, 12)                    # FIXTURE: dropping in over the floor
 	var finished_airborne := false
 	for i in 120:
@@ -628,7 +630,7 @@ func go() -> void:
 			break
 	print("VALLEY FIXTURE at=", valley, " state=", run.state, " reason=", rider.last_crash_reason, " p=", rider.position, " floor=", rider.is_on_floor())
 	check(not finished_airborne and run.state == "finished", "the descent ends only once the board is down on the valley floor, not in the air above it")
-	var face_ok := run.last_rank >= 0 and run.record_faces.size() == run.records.size() and run.record_faces[run.last_rank] == SnowMountain.face_name(rider.position.x, rider.position.z)
+	var face_ok: bool = run.last_rank >= 0 and run.record_faces.size() == run.records.size() and run.record_faces[run.last_rank] == SnowMountain.face_name(rider.position.x, rider.position.z)
 	check(face_ok, "the record keeps which side of the mountain the run finished on (%s)" % (run.record_faces[run.last_rank] if face_ok else "-"))
 	var legacy := FileAccess.open("user://test_feel_legacy_records.json", FileAccess.WRITE)
 	legacy.store_string("[300.5, 250.25]")
@@ -730,6 +732,7 @@ func place_on_slope(speed: float) -> void:
 	var mountain: SnowMountain = game.get_node("Mountain")
 	mountain.prepare(p)
 	rider.position = Vector3(p.x, rider.ground_y(p.x, p.z) + 0.72, p.z)
+	rider.launch_height = rider.position.y
 	rider.heading = atan2(fall.x, fall.z)
 	var n := SnowMountain.normal_at(p.x, p.z)
 	rider.velocity = (fall - Vector3.UP * (Vector2(n.x, n.z).length() / n.y)).normalized() * speed

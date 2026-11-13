@@ -335,7 +335,8 @@ func drive(azimuth_deg: float) -> void:
 	var desired := atan2(target.x - p2.x, target.y - p2.y)
 	# Read the ground ahead like a rider would: never ride off a drop. Pick the
 	# heading closest to the plan that has no cliff edge in the next 20-90 m.
-	if rider.is_on_floor() and rider.recovery <= 0.0 and rider.speed > 4.0:
+	var from_top := Vector2(rider.position.x - SnowMountain.summit.x, rider.position.z - SnowMountain.summit.z).length()
+	if rider.is_on_floor() and rider.recovery <= 0.0 and rider.speed > 4.0 and from_top > 400.0:
 		var safe := desired
 		var found := false
 		var least := INF
@@ -380,7 +381,7 @@ func cliff_ahead(heading: float) -> float:
 		var q := p + dir * d
 		var h := SnowMountain.height_at(q.x, q.y)
 		# Lips and gully rims: the ground falls away far below the line we ride.
-		if (h0 - d * along_grade) - h > 30.0 and h0 - h > 30.0:
+		if rider.speed > 20.0 and (h0 - d * along_grade) - h > 30.0 and h0 - h > 30.0:
 			return (h0 - h) * (1.0 + (reach - d) / reach)
 		# Only real drops matter (a rider survives small steps and gully walls).
 		if prev - h > 8.0 * 1.05 + 1.5 and h0 - h > 18.0:
